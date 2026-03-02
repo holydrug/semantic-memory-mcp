@@ -190,28 +190,13 @@ You can also configure triggers interactively during `npx semantic-memory-mcp@la
 
 ## Updating
 
-The recommended config uses `npx -y semantic-memory-mcp@latest` — this always fetches the latest version from npm automatically. No manual updates needed.
+All configs use `npx -y semantic-memory-mcp@latest` — this always pulls the latest version from npm automatically. No manual updates needed.
 
-If you installed globally (`npm install -g semantic-memory-mcp`), you must update manually:
-
-```bash
-npm install -g semantic-memory-mcp@latest
-```
-
-To check your current version:
+Check your current version:
 
 ```bash
 npx semantic-memory-mcp@latest --version
 ```
-
-> **Tip:** If your MCP config uses `"command": "semantic-memory-mcp"` (without npx), it runs the globally installed version which won't auto-update. Switch to `npx` to always get the latest:
->
-> ```json
-> {
->   "command": "npx",
->   "args": ["-y", "semantic-memory-mcp@latest"]
-> }
-> ```
 
 ## Requirements
 
