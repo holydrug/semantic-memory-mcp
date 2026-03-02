@@ -486,6 +486,13 @@ async function runFullInit(
         console.log(`  Then pull the model: ollama pull ${ollamaModel}`);
       }
     }
+
+    // Verify model is actually available before writing config
+    if (isOllamaRunning(ollamaUrl) && !isModelAvailable(ollamaUrl, ollamaModel)) {
+      console.warn(`\n  Warning: Model '${ollamaModel}' is not available in Ollama.`);
+      console.warn(`  MCP server will fail to start until the model is pulled.`);
+      console.warn(`  Run: curl ${ollamaUrl}/api/pull -d '{"name":"${ollamaModel}"}'`);
+    }
   } else {
     console.log(`\n  Start later with:`);
     console.log(`    cd ${projectDir} && docker compose up -d`);
@@ -624,15 +631,13 @@ export async function runInit(): Promise<void> {
       args: ["-y", "semantic-memory-mcp@latest"],
     };
 
-    // Ensure global mcpServers entry always exists
+    // Always update global mcpServers entry (including re-runs with new settings)
     const mcpServers = (config["mcpServers"] ?? {}) as Record<string, unknown>;
-    if (!mcpServers["semantic-memory"]) {
-      const globalEntry: Record<string, unknown> = { ...serverEntry };
-      if (Object.keys(result.envVars).length > 0) {
-        globalEntry["env"] = { ...result.envVars };
-      }
-      mcpServers["semantic-memory"] = globalEntry;
+    const globalEntry: Record<string, unknown> = { ...serverEntry };
+    if (Object.keys(result.envVars).length > 0) {
+      globalEntry["env"] = { ...result.envVars };
     }
+    mcpServers["semantic-memory"] = globalEntry;
     config["mcpServers"] = mcpServers;
 
     if (enablePerProject) {
@@ -665,15 +670,8 @@ export async function runInit(): Promise<void> {
       console.log(`\n  Project memory: ./.semantic-memory/`);
       console.log(`  Global memory: ${globalMemDir}/`);
       console.log("  Run 'npx semantic-memory-mcp promote' to review and promote facts to global memory.");
-    } else {
-      // Single mode — update global entry with env vars
-      const globalEntry: Record<string, unknown> = { ...serverEntry };
-      if (Object.keys(result.envVars).length > 0) {
-        globalEntry["env"] = result.envVars;
-      }
-      mcpServers["semantic-memory"] = globalEntry;
-      config["mcpServers"] = mcpServers;
     }
+    // Global entry is already updated above for both single and dual modes
 
     // Save config
     writeFileSync(claudeJsonPath, JSON.stringify(config, null, 2) + "\n");
