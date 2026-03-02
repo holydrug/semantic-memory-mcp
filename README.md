@@ -5,7 +5,7 @@ Persistent memory for [Claude Code](https://docs.anthropic.com/en/docs/claude-co
 ## Quick start
 
 ```bash
-npx semantic-memory-mcp@latest init
+npx semantic-memory-mcp@0.5.3 init
 # Restart Claude Code — done!
 ```
 
@@ -30,7 +30,7 @@ By default all facts go into one global database (`~/.cache/claude-memory/`). Wi
 Enable it during init:
 
 ```bash
-npx semantic-memory-mcp@latest init
+npx semantic-memory-mcp@0.5.3 init
 # → Choose mode (Lightweight / Full)
 # → "Enable per-project memory for this folder?" → y
 ```
@@ -53,7 +53,7 @@ There are three ways to connect the MCP server to Claude Code:
 
 ### Global (recommended for personal use)
 
-Added automatically by `npx semantic-memory-mcp@latest init`. Config lives in `~/.claude.json`:
+Added automatically by `npx semantic-memory-mcp@0.5.3 init`. Config lives in `~/.claude.json`:
 
 ```json
 {
@@ -61,7 +61,7 @@ Added automatically by `npx semantic-memory-mcp@latest init`. Config lives in `~
     "semantic-memory": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "semantic-memory-mcp@latest"]
+      "args": ["-y", "semantic-memory-mcp@0.5.3"]
     }
   }
 }
@@ -77,7 +77,7 @@ Create `.mcp.json` in the project root. Committed to the repo so the team shares
     "semantic-memory": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "semantic-memory-mcp@latest"],
+      "args": ["-y", "semantic-memory-mcp@0.5.3"],
       "env": {
         "CLAUDE_MEMORY_DIR": "./.semantic-memory"
       }
@@ -103,7 +103,7 @@ The init wizard writes this to `~/.claude.json` when you enable per-project memo
         "semantic-memory": {
           "type": "stdio",
           "command": "npx",
-          "args": ["-y", "semantic-memory-mcp@latest"],
+          "args": ["-y", "semantic-memory-mcp@0.5.3"],
           "env": {
             "CLAUDE_MEMORY_DIR": "./.semantic-memory",
             "CLAUDE_MEMORY_GLOBAL_DIR": "/home/user/.cache/claude-memory"
@@ -176,7 +176,7 @@ Example — adding Chinese and Spanish triggers:
     "semantic-memory": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "semantic-memory-mcp@latest"],
+      "args": ["-y", "semantic-memory-mcp@0.5.3"],
       "env": {
         "MEMORY_TRIGGERS_STORE": "记住, recuerda, guardar",
         "MEMORY_TRIGGERS_SEARCH": "搜索记忆, buscar en memoria"
@@ -186,24 +186,11 @@ Example — adding Chinese and Spanish triggers:
 }
 ```
 
-You can also configure triggers interactively during `npx semantic-memory-mcp@latest init`.
+You can also configure triggers interactively during `npx semantic-memory-mcp@0.5.3 init`.
 
 ## Updating
 
-All configs use `npx -y semantic-memory-mcp@latest` — this pulls the latest version from npm automatically.
-
-Check your current version:
-
-```bash
-npx semantic-memory-mcp@latest --version
-```
-
-If npx serves a stale cached version, clear the cache:
-
-```bash
-npx --yes clear-npx-cache
-npm cache clean --force
-```
+All commands and configs use a pinned version (`semantic-memory-mcp@0.5.3`). This README is automatically updated on each release, so copying any command from here always gives you the latest version.
 
 ## Requirements
 

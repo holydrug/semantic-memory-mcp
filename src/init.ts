@@ -1,9 +1,13 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { homedir, platform, arch } from "node:os";
 import { execSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { DEFAULT_TRIGGERS, type ToolKey } from "./triggers.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const PKG_VERSION = (JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8")) as { version: string }).version;
 
 interface InitResult {
   envVars: Record<string, string>;
@@ -624,11 +628,12 @@ export async function runInit(): Promise<void> {
     const perProject = await ask(rl, "\nEnable per-project memory for this folder? [y/N]: ");
     const enablePerProject = perProject.toLowerCase() === "y";
 
-    // Build server entry
+    // Build server entry with pinned version to avoid npx cache issues
+    const npxPkg = `semantic-memory-mcp@${PKG_VERSION}`;
     const serverEntry: Record<string, unknown> = {
       type: "stdio",
       command: "npx",
-      args: ["-y", "semantic-memory-mcp@latest"],
+      args: ["-y", npxPkg],
     };
 
     // Always update global mcpServers entry (including re-runs with new settings)
@@ -654,7 +659,7 @@ export async function runInit(): Promise<void> {
       const projectServerEntry: Record<string, unknown> = {
         type: "stdio",
         command: "npx",
-        args: ["-y", "semantic-memory-mcp@latest"],
+        args: ["-y", npxPkg],
         env: projectEnv,
       };
 
