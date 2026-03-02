@@ -1,8 +1,13 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { StorageBackend, EmbedFn } from "../types.js";
+import type { StorageBackend, DualStorageBackend, EmbedFn } from "../types.js";
 import type { Config } from "../config.js";
 import { buildDescription } from "../triggers.js";
+import { classifyScope } from "../classify.js";
+
+function isDualBackend(db: StorageBackend): db is DualStorageBackend {
+  return "isDual" in db && (db as DualStorageBackend).isDual === true;
+}
 
 export function registerStoreTool(
   server: McpServer,
@@ -39,10 +44,14 @@ export function registerStoreTool(
         embed(fact),
       ]);
 
-      const subjectId = await db.findOrCreateEntity(subject, subjectEmb);
-      const objectId = await db.findOrCreateEntity(object, objectEmb);
+      // Auto-route to correct layer in dual mode
+      const scope = isDualBackend(db) ? classifyScope(predicate) : null;
+      const target = scope && isDualBackend(db) ? db.getLayerBackend(scope) : db;
 
-      await db.storeFact({
+      const subjectId = await target.findOrCreateEntity(subject, subjectEmb);
+      const objectId = await target.findOrCreateEntity(object, objectEmb);
+
+      await target.storeFact({
         subjectId,
         predicate,
         objectId,
@@ -50,13 +59,15 @@ export function registerStoreTool(
         context,
         source: source ?? "",
         embedding: factEmb,
+        scopeCandidate: scope,
       });
 
+      const layerTag = scope ? ` [${scope}]` : "";
       return {
         content: [
           {
             type: "text" as const,
-            text: `Stored: [${subject}] -[${predicate}]-> [${object}]\nFact: ${fact}`,
+            text: `Stored${layerTag}: [${subject}] -[${predicate}]-> [${object}]\nFact: ${fact}`,
           },
         ],
       };

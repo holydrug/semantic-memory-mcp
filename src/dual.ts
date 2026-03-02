@@ -1,6 +1,7 @@
 import { classifyScope } from "./classify.js";
 import type {
   StorageBackend,
+  DualStorageBackend,
   StoreFact,
   SearchResult,
   GraphResult,
@@ -9,20 +10,26 @@ import type {
 } from "./types.js";
 
 /**
- * Composite backend that writes to project layer and reads from both.
- * Auto-classifies facts as global/project scope candidates.
+ * Composite backend that auto-routes writes by predicate scope and reads from both layers.
+ * Global predicates (uses, depends_on, etc.) write directly to global layer.
+ * Project predicates (bug_in, todo, etc.) write to project layer.
  */
 export function createDualBackend(
   project: StorageBackend,
   global: StorageBackend,
-): StorageBackend {
+): DualStorageBackend {
+  function getLayerBackend(scope: "global" | "project"): StorageBackend {
+    return scope === "global" ? global : project;
+  }
+
   async function findOrCreateEntity(name: string, embedding: Float32Array): Promise<number> {
     return project.findOrCreateEntity(name, embedding);
   }
 
   async function storeFact(params: StoreFact): Promise<number> {
-    const scopeCandidate = params.scopeCandidate ?? classifyScope(params.predicate);
-    return project.storeFact({ ...params, scopeCandidate });
+    const scope = params.scopeCandidate ?? classifyScope(params.predicate);
+    const target = getLayerBackend(scope);
+    return target.storeFact({ ...params, scopeCandidate: scope });
   }
 
   async function searchFacts(embedding: Float32Array, limit: number): Promise<SearchResult[]> {
@@ -116,6 +123,8 @@ export function createDualBackend(
   }
 
   return {
+    isDual: true as const,
+    getLayerBackend,
     findOrCreateEntity,
     storeFact,
     searchFacts,

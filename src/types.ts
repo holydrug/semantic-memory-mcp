@@ -60,3 +60,9 @@ export interface StorageBackend {
   getCandidateFacts?(scope: "global" | "project"): Promise<CandidateFact[]>;
   updateFactScope?(factId: number, scope: "global" | "project" | null): Promise<void>;
 }
+
+/** Dual-layer backend that exposes per-layer access for auto-routing */
+export interface DualStorageBackend extends StorageBackend {
+  getLayerBackend(scope: "global" | "project"): StorageBackend;
+  readonly isDual: true;
+}

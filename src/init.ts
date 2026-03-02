@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { basename, join, dirname } from "node:path";
+import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir, platform, arch } from "node:os";
 import { execSync } from "node:child_process";
@@ -652,30 +652,31 @@ export async function runInit(): Promise<void> {
       }
     }
 
-    // Step: Per-project memory
-    const perProject = await ask(rl, "\nEnable per-project memory for this folder? [y/N]: ");
-    const enablePerProject = perProject.toLowerCase() === "y";
+    // Step: Share knowledge between projects (auto-promote dual mode)
+    const shareKnowledge = await ask(rl, "\nShare knowledge between projects? [Y/n]: ");
+    const enableDualMode = shareKnowledge === "" || shareKnowledge.toLowerCase() === "y";
 
     // Build server entry with pinned version to avoid npx cache issues
     const npxPkg = `semantic-memory-mcp@${PKG_VERSION}`;
-    const serverEntry: Record<string, unknown> = {
-      type: "stdio",
-      command: "npx",
-      args: ["-y", npxPkg],
-    };
 
     // Always update global mcpServers entry (including re-runs with new settings)
     const mcpServers = (config["mcpServers"] ?? {}) as Record<string, unknown>;
-    const globalEntry: Record<string, unknown> = { ...serverEntry };
     const globalEnv: Record<string, string> = { ...result.envVars };
 
-    if (enablePerProject) {
+    if (enableDualMode) {
       const globalMemDir = join(homedir(), ".cache", "claude-memory");
       globalEnv["CLAUDE_MEMORY_GLOBAL_DIR"] = globalMemDir;
+      globalEnv["CLAUDE_MEMORY_DIR"] = "./.semantic-memory";
       if (result.envVars["STORAGE_PROVIDER"] === "neo4j") {
         globalEnv["GLOBAL_STORAGE_PROVIDER"] = "neo4j";
       }
     }
+
+    const globalEntry: Record<string, unknown> = {
+      type: "stdio",
+      command: "npx",
+      args: ["-y", npxPkg],
+    };
 
     if (Object.keys(globalEnv).length > 0) {
       globalEntry["env"] = globalEnv;
@@ -683,43 +684,13 @@ export async function runInit(): Promise<void> {
     mcpServers["semantic-memory"] = globalEntry;
     config["mcpServers"] = mcpServers;
 
-    if (enablePerProject) {
-      const cwd = process.cwd();
-      const slug = basename(cwd);
+    if (enableDualMode) {
       const globalMemDir = join(homedir(), ".cache", "claude-memory");
-
-      // Build per-project env with dual mode vars
-      const projectEnv: Record<string, string> = {
-        ...result.envVars,
-        CLAUDE_MEMORY_DIR: "./.semantic-memory",
-        CLAUDE_MEMORY_GLOBAL_DIR: globalMemDir,
-        CLAUDE_MEMORY_PROJECT_SLUG: slug,
-        ...(result.envVars["STORAGE_PROVIDER"] === "neo4j"
-          ? { GLOBAL_STORAGE_PROVIDER: "neo4j" }
-          : {}),
-      };
-
-      const projectServerEntry: Record<string, unknown> = {
-        type: "stdio",
-        command: "npx",
-        args: ["-y", npxPkg],
-        env: projectEnv,
-      };
-
-      // Create projects section
-      const projects = (config["projects"] ?? {}) as Record<string, unknown>;
-      const projectConfig = (projects[cwd] ?? {}) as Record<string, unknown>;
-      const projectMcpServers = (projectConfig["mcpServers"] ?? {}) as Record<string, unknown>;
-      projectMcpServers["semantic-memory"] = projectServerEntry;
-      projectConfig["mcpServers"] = projectMcpServers;
-      projects[cwd] = projectConfig;
-      config["projects"] = projects;
-
-      console.log(`\n  Project memory: ./.semantic-memory/`);
+      console.log(`\n  Auto-promote enabled: stable facts (uses, depends_on, ...) → global layer.`);
+      console.log(`  Project-local memory: ./.semantic-memory/ (auto-detected per project)`);
       console.log(`  Global memory: ${globalMemDir}/`);
-      console.log("  Run 'npx semantic-memory-mcp promote' to review and promote facts to global memory.");
+      console.log("  Run 'npx semantic-memory-mcp promote' to manually promote project facts.");
     }
-    // Global entry is already updated above for both single and dual modes
 
     // Save config
     writeFileSync(claudeJsonPath, JSON.stringify(config, null, 2) + "\n");

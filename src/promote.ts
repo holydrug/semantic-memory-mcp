@@ -2,7 +2,7 @@ import { createInterface } from "node:readline/promises";
 import type { StorageBackend, EmbedFn } from "./types.js";
 
 /**
- * Interactive CLI to promote global candidate facts from project to global backend.
+ * Interactive CLI to promote project facts to global backend.
  */
 export async function runPromote(
   projectBackend: StorageBackend,
@@ -14,14 +14,14 @@ export async function runPromote(
     process.exit(1);
   }
 
-  const candidates = await projectBackend.getCandidateFacts("global");
+  const candidates = await projectBackend.getCandidateFacts("project");
 
   if (candidates.length === 0) {
-    console.log("No global candidates to promote.");
+    console.log("No project facts to promote.");
     return;
   }
 
-  console.log(`\nGlobal candidates (${candidates.length}):\n`);
+  console.log(`\nProject facts available for promotion (${candidates.length}):\n`);
   for (let i = 0; i < candidates.length; i++) {
     const c = candidates[i]!;
     console.log(`  ${i + 1}) [${c.subject}] -[${c.predicate}]-> [${c.object}]`);

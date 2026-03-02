@@ -33,9 +33,9 @@ export function registerListTool(server: McpServer, db: StorageBackend, config: 
       // In dual mode, show pending global candidates count
       if (db.getCandidateFacts) {
         try {
-          const candidates = await db.getCandidateFacts("global");
+          const candidates = await db.getCandidateFacts("project");
           if (candidates.length > 0) {
-            lines.push(`\n\uD83D\uDCCC ${candidates.length} fact(s) pending for global promote. Run: npx semantic-memory-mcp promote`);
+            lines.push(`\n\uD83D\uDCCC ${candidates.length} project fact(s) available for promotion. Run: npx semantic-memory-mcp promote`);
           }
         } catch {
           // ignore — backend may not support candidates

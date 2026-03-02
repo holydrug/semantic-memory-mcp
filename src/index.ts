@@ -63,7 +63,7 @@ if (command === "help" || command === "--help" || command === "-h") {
 Usage:
   semantic-memory-mcp           Start MCP server (stdio transport)
   semantic-memory-mcp init      Add to ~/.claude.json and activate
-  semantic-memory-mcp promote   Promote global candidates from project to global memory
+  semantic-memory-mcp promote   Promote project facts to global memory
   semantic-memory-mcp version   Show version
 
 Environment variables:
