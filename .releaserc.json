@@ -1,0 +1,18 @@
+{
+  "branches": ["main"],
+  "tagFormat": "v${version}",
+  "plugins": [
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    "@semantic-release/changelog",
+    "@semantic-release/npm",
+    ["@semantic-release/exec", {
+      "prepareCmd": "sed -i \"s/semantic-memory-mcp@[0-9]*\\.[0-9]*\\.[0-9]*/semantic-memory-mcp@${nextRelease.version}/g\" README.md"
+    }],
+    ["@semantic-release/git", {
+      "assets": ["package.json", "CHANGELOG.md", "README.md"],
+      "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+    }],
+    "@semantic-release/github"
+  ]
+}
