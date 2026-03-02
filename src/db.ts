@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import Database from "better-sqlite3";
 import * as sqliteVec from "sqlite-vec";
 import { getConfig } from "./config.js";
@@ -79,11 +80,25 @@ export function initDb(dbPathOverride?: string): Db {
   if (storedDim) {
     const existing = parseInt(storedDim.value, 10);
     if (existing !== config.embeddingDim) {
-      throw new Error(
-        `Embedding dimension mismatch: database was created with dim=${existing}, ` +
-        `but current config has dim=${config.embeddingDim}. ` +
-        `Either use EMBEDDING_DIM=${existing} or start with a fresh database.`
-      );
+      const entityCount = (db.prepare("SELECT COUNT(*) as c FROM entities").get() as { c: number }).c;
+      const factCount = (db.prepare("SELECT COUNT(*) as c FROM facts").get() as { c: number }).c;
+
+      if (entityCount === 0 && factCount === 0) {
+        // Empty DB — safe to auto-migrate
+        console.error(
+          `[claude-memory] Auto-migrating empty DB: dim ${existing} → ${config.embeddingDim}`
+        );
+        db.exec("DROP TABLE IF EXISTS fact_embeddings");
+        db.exec("DROP TABLE IF EXISTS entity_embeddings");
+        db.prepare("UPDATE meta SET value = ? WHERE key = 'embedding_dim'")
+          .run(String(config.embeddingDim));
+      } else {
+        throw new Error(
+          `Embedding dimension mismatch: database has ${entityCount} entities and ${factCount} facts ` +
+          `with dim=${existing}, but current config has dim=${config.embeddingDim}. ` +
+          `Run 'npx semantic-memory-mcp init' to migrate, or use EMBEDDING_DIM=${existing}.`
+        );
+      }
     }
   } else {
     db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('embedding_dim', ?)")
@@ -317,6 +332,65 @@ export function initDb(dbPathOverride?: string): Db {
     updateFactScope,
     close: () => db.close(),
   };
+}
+
+// ─── Standalone migration for use by init ────────────────────
+
+export interface MigrateResult {
+  status: "no_db" | "match" | "migrated";
+  oldDim?: number;
+  droppedEntities?: number;
+  droppedFacts?: number;
+}
+
+export function migrateEmbeddingDim(dbPath: string, newDim: number): MigrateResult {
+  if (!existsSync(dbPath)) return { status: "no_db" };
+
+  const db = new Database(dbPath);
+  sqliteVec.load(db);
+
+  try {
+    const hasMeta = db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='meta'"
+    ).get();
+    if (!hasMeta) return { status: "no_db" };
+
+    const row = db.prepare(
+      "SELECT value FROM meta WHERE key = 'embedding_dim'"
+    ).get() as { value: string } | undefined;
+    if (!row) return { status: "no_db" };
+
+    const oldDim = parseInt(row.value, 10);
+    if (oldDim === newDim) return { status: "match" };
+
+    // Count existing data
+    const entities = (db.prepare("SELECT COUNT(*) as c FROM entities").get() as { c: number }).c;
+    const facts = (db.prepare("SELECT COUNT(*) as c FROM facts").get() as { c: number }).c;
+
+    // Drop vec0 tables (embeddings are invalidated by dimension change)
+    db.exec("DROP TABLE IF EXISTS fact_embeddings");
+    db.exec("DROP TABLE IF EXISTS entity_embeddings");
+
+    if (entities > 0 || facts > 0) {
+      db.exec("DELETE FROM facts");
+      db.exec("DELETE FROM entities");
+    }
+
+    // Update dimension and recreate vec0 tables
+    db.prepare("UPDATE meta SET value = ? WHERE key = 'embedding_dim'")
+      .run(String(newDim));
+
+    db.exec(`CREATE VIRTUAL TABLE entity_embeddings USING vec0(
+      embedding float[${newDim}] distance_metric=cosine
+    )`);
+    db.exec(`CREATE VIRTUAL TABLE fact_embeddings USING vec0(
+      embedding float[${newDim}] distance_metric=cosine
+    )`);
+
+    return { status: "migrated", oldDim, droppedEntities: entities, droppedFacts: facts };
+  } finally {
+    db.close();
+  }
 }
 
 /** Wraps sync SQLite Db into async StorageBackend */

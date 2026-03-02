@@ -5,6 +5,7 @@ import { homedir, platform, arch } from "node:os";
 import { execSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { DEFAULT_TRIGGERS, type ToolKey } from "./triggers.js";
+import { migrateEmbeddingDim } from "./db.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PKG_VERSION = (JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8")) as { version: string }).version;
@@ -622,6 +623,33 @@ export async function runInit(): Promise<void> {
       result = await runLightweightInit(rl);
     } else {
       result = await runFullInit(rl);
+    }
+
+    // Migrate existing databases if embedding dimension changed
+    const newDim = result.envVars["EMBEDDING_DIM"]
+      ? parseInt(result.envVars["EMBEDDING_DIM"], 10)
+      : 384; // builtin default
+
+    const dbsToMigrate = [
+      { label: "Global", path: join(homedir(), ".cache", "claude-memory", "memory.db") },
+      { label: "Project", path: join(process.cwd(), ".semantic-memory", "memory.db") },
+    ];
+
+    for (const { label, path } of dbsToMigrate) {
+      try {
+        const m = migrateEmbeddingDim(path, newDim);
+        if (m.status === "migrated") {
+          if (m.droppedFacts! > 0 || m.droppedEntities! > 0) {
+            console.log(
+              `  ${label} DB: dim ${m.oldDim} → ${newDim}, cleared ${m.droppedEntities} entities and ${m.droppedFacts} facts`
+            );
+          } else {
+            console.log(`  ${label} DB: migrated dim ${m.oldDim} → ${newDim}`);
+          }
+        }
+      } catch {
+        // DB not accessible — will be created fresh at server start
+      }
     }
 
     // Step: Per-project memory
