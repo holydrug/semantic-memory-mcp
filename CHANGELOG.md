@@ -1,3 +1,10 @@
+# [0.8.0](https://github.com/holydrug/claude-memory/compare/v0.7.1...v0.8.0) (2026-03-02)
+
+
+### Features
+
+* auto-promote facts to correct layer based on predicate scope ([dbe2a39](https://github.com/holydrug/claude-memory/commit/dbe2a393022f6768c8fd19f0e14d4e3261966ab0))
+
 ## [0.7.1](https://github.com/holydrug/claude-memory/compare/v0.7.0...v0.7.1) (2026-03-02)
 
 
