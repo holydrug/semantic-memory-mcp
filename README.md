@@ -24,28 +24,38 @@ By default all facts go into one global database (`~/.cache/claude-memory/`). Wi
 
 | Layer | Location | Contains |
 |-------|----------|----------|
-| **Project** | `./.semantic-memory/` | Bugs, workarounds, patterns for the current epic |
+| **Project** | `./.semantic-memory/` | Bugs, workarounds, patterns for the current codebase |
 | **Global** | `~/.cache/claude-memory/` | Tech stack, conventions, preferences — shared across projects |
 
-Enable it during init:
+Enable during init (on by default):
 
 ```bash
 npx semantic-memory-mcp@0.8.0 init
 # → Choose mode (Lightweight / Full)
-# → "Enable per-project memory for this folder?" → y
+# → "Share knowledge between projects?" → Y
 ```
 
-Facts are auto-classified by predicate: `uses`, `depends_on`, `written_in` → global candidate; `bug_in`, `todo`, `workaround_for` → project. Search and graph queries hit both layers.
+### Auto-routing
 
-### Promote
+Facts are routed to the correct layer at write time based on predicate:
 
-Review and transfer global candidates from the current project to global memory:
+| → Global | → Project (default) |
+|----------|-----------|
+| `uses`, `depends_on`, `deployed_on`, `written_in`, `has_version`, `runs_on`, `built_with`, `integrates_with`, `prefers`, `convention` | `blocked_by`, `workaround_for`, `todo`, `bug_in`, `fixed_by`, `needs_refactor`, `has_pattern`, `test_for`, `config_for` |
+
+Unknown predicates default to project (promote manually).
+
+Search and graph queries always hit both layers — no manual switching.
+
+### Manual promote
+
+Project-scoped facts can be promoted to global manually:
 
 ```bash
 npx semantic-memory-mcp promote
 ```
 
-Shows a numbered list, you pick which facts to promote (all / none / by number). The `memory_list_entities` tool shows a reminder when candidates are pending.
+Shows a numbered list, you pick which facts to promote (all / none / by number).
 
 ## Where to configure
 
@@ -88,27 +98,20 @@ Create `.mcp.json` in the project root. Committed to the repo so the team shares
 
 Add `.semantic-memory/` to `.gitignore`.
 
-### Per-project with dual mode
+### Dual mode (auto-configured by init)
 
-The init wizard writes this to `~/.claude.json` when you enable per-project memory:
+A single global entry in `~/.claude.json` handles all projects — no per-project config needed:
 
 ```json
 {
   "mcpServers": {
-    "semantic-memory": { "..." : "global fallback" }
-  },
-  "projects": {
-    "/home/user/my-project": {
-      "mcpServers": {
-        "semantic-memory": {
-          "type": "stdio",
-          "command": "npx",
-          "args": ["-y", "semantic-memory-mcp@0.8.0"],
-          "env": {
-            "CLAUDE_MEMORY_DIR": "./.semantic-memory",
-            "CLAUDE_MEMORY_GLOBAL_DIR": "/home/user/.cache/claude-memory"
-          }
-        }
+    "semantic-memory": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "semantic-memory-mcp@0.8.0"],
+      "env": {
+        "CLAUDE_MEMORY_DIR": "./.semantic-memory",
+        "CLAUDE_MEMORY_GLOBAL_DIR": "/home/user/.cache/claude-memory"
       }
     }
   }
