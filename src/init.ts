@@ -682,6 +682,9 @@ export async function runInit(): Promise<void> {
         ...result.envVars,
         CLAUDE_MEMORY_DIR: "./.semantic-memory",
         CLAUDE_MEMORY_GLOBAL_DIR: globalMemDir,
+        ...(result.envVars["STORAGE_PROVIDER"] === "neo4j"
+          ? { GLOBAL_STORAGE_PROVIDER: "neo4j" }
+          : {}),
       };
 
       const projectServerEntry: Record<string, unknown> = {

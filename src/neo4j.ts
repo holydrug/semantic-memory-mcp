@@ -9,10 +9,6 @@ import type {
   StorageBackend,
 } from "./types.js";
 
-const SCHEMA_QUERIES = [
-  "CREATE CONSTRAINT entity_name IF NOT EXISTS FOR (e:Entity) REQUIRE e.name IS UNIQUE",
-];
-
 function vectorIndexQuery(indexName: string, label: string, dim: number): string {
   return `CREATE VECTOR INDEX ${indexName} IF NOT EXISTS
     FOR (n:${label}) ON (n.embedding)
@@ -23,9 +19,21 @@ function vectorIndexQuery(indexName: string, label: string, dim: number): string
 }
 
 async function ensureSchema(session: Session, dim: number): Promise<void> {
-  for (const q of SCHEMA_QUERIES) {
-    await session.run(q);
+  // Drop old name-only unique constraint (can't have same entity in both layers)
+  try {
+    await session.run("DROP CONSTRAINT entity_name IF EXISTS");
+  } catch {
+    // constraint may not exist
   }
+
+  // Composite index on (name, layer) for performance
+  await session.run(
+    "CREATE INDEX entity_name_layer IF NOT EXISTS FOR (e:Entity) ON (e.name, e.layer)",
+  );
+
+  // Migrate existing nodes that lack a layer property
+  await session.run("MATCH (n) WHERE n.layer IS NULL SET n.layer = 'project'");
+
   await session.run(vectorIndexQuery("entity_embedding", "Entity", dim));
   await session.run(vectorIndexQuery("fact_embedding", "Fact", dim));
   await session.run(
@@ -33,7 +41,7 @@ async function ensureSchema(session: Session, dim: number): Promise<void> {
   );
 }
 
-export function initNeo4j(): StorageBackend {
+export function initNeo4j(layer?: "project" | "global"): StorageBackend {
   const config = getConfig();
   const driver: Driver = neo4j.driver(
     config.neo4jUri,
@@ -57,13 +65,20 @@ export function initNeo4j(): StorageBackend {
 
   async function findOrCreateEntity(name: string, embedding: Float32Array): Promise<number> {
     return withSession(async (session) => {
-      const result = await session.run(
-        `MERGE (e:Entity {name: $name})
-         ON CREATE SET e.created_at = datetime(), e.embedding = $emb
-         ON MATCH SET e.embedding = $emb
-         RETURN id(e) AS id`,
-        { name, emb: Array.from(embedding) },
-      );
+      const query = layer
+        ? `MERGE (e:Entity {name: $name, layer: $layer})
+           ON CREATE SET e.created_at = datetime(), e.embedding = $emb
+           ON MATCH SET e.embedding = $emb
+           RETURN id(e) AS id`
+        : `MERGE (e:Entity {name: $name})
+           ON CREATE SET e.created_at = datetime(), e.embedding = $emb
+           ON MATCH SET e.embedding = $emb
+           RETURN id(e) AS id`;
+
+      const params: Record<string, unknown> = { name, emb: Array.from(embedding) };
+      if (layer) params.layer = layer;
+
+      const result = await session.run(query, params);
       const record = result.records[0];
       return record!.get("id").toNumber();
     });
@@ -71,8 +86,8 @@ export function initNeo4j(): StorageBackend {
 
   async function storeFact(params: StoreFact): Promise<number> {
     return withSession(async (session) => {
-      const result = await session.run(
-        `MATCH (subj:Entity) WHERE id(subj) = $subjectId
+      const layerProp = layer ? ", layer: $layer" : "";
+      const query = `MATCH (subj:Entity) WHERE id(subj) = $subjectId
          MATCH (obj:Entity) WHERE id(obj) = $objectId
          CREATE (f:Fact {
            predicate: $predicate,
@@ -81,22 +96,25 @@ export function initNeo4j(): StorageBackend {
            source: $source,
            scope_candidate: $scopeCandidate,
            embedding: $embedding,
-           created_at: datetime()
+           created_at: datetime()${layerProp}
          })
          CREATE (subj)-[:SUBJECT_OF]->(f)
          CREATE (f)-[:OBJECT_IS]->(obj)
-         RETURN id(f) AS id`,
-        {
-          subjectId: neo4j.int(params.subjectId),
-          objectId: neo4j.int(params.objectId),
-          predicate: params.predicate,
-          content: params.content,
-          context: params.context,
-          source: params.source,
-          scopeCandidate: params.scopeCandidate ?? null,
-          embedding: Array.from(params.embedding),
-        },
-      );
+         RETURN id(f) AS id`;
+
+      const queryParams: Record<string, unknown> = {
+        subjectId: neo4j.int(params.subjectId),
+        objectId: neo4j.int(params.objectId),
+        predicate: params.predicate,
+        content: params.content,
+        context: params.context,
+        source: params.source,
+        scopeCandidate: params.scopeCandidate ?? null,
+        embedding: Array.from(params.embedding),
+      };
+      if (layer) queryParams.layer = layer;
+
+      const result = await session.run(query, queryParams);
       const record = result.records[0];
       return record!.get("id").toNumber();
     });
@@ -104,18 +122,28 @@ export function initNeo4j(): StorageBackend {
 
   async function searchFacts(embedding: Float32Array, limit: number): Promise<SearchResult[]> {
     return withSession(async (session) => {
-      const result = await session.run(
-        `CALL db.index.vector.queryNodes('fact_embedding', $limit, $embedding)
+      // When filtering by layer, request 3x candidates to compensate for post-filter
+      const candidateLimit = layer ? limit * 3 : limit;
+      const layerFilter = layer ? `WHERE f.layer = $layer` : "";
+
+      const query = `CALL db.index.vector.queryNodes('fact_embedding', $limit, $embedding)
          YIELD node AS f, score
+         ${layerFilter}
          MATCH (subj:Entity)-[:SUBJECT_OF]->(f)-[:OBJECT_IS]->(obj:Entity)
          RETURN subj.name AS subject, f.predicate AS predicate, obj.name AS object,
                 f.content AS fact, f.context AS context, f.source AS source,
                 score
-         ORDER BY score DESC`,
-        { limit: neo4j.int(limit), embedding: Array.from(embedding) },
-      );
+         ORDER BY score DESC`;
 
-      return result.records.map((r) => ({
+      const queryParams: Record<string, unknown> = {
+        limit: neo4j.int(candidateLimit),
+        embedding: Array.from(embedding),
+      };
+      if (layer) queryParams.layer = layer;
+
+      const result = await session.run(query, queryParams);
+
+      return result.records.slice(0, limit).map((r) => ({
         subject: r.get("subject") as string,
         predicate: r.get("predicate") as string,
         object: r.get("object") as string,
@@ -133,21 +161,24 @@ export function initNeo4j(): StorageBackend {
   ): Promise<GraphResult | null> {
     return withSession(async (session) => {
       // Fuzzy find entity
-      const matchResult = await session.run(
-        `MATCH (e:Entity)
-         WHERE toLower(e.name) CONTAINS toLower($name)
+      const layerFilter = layer ? " AND e.layer = $layer" : "";
+      const matchQuery = `MATCH (e:Entity)
+         WHERE toLower(e.name) CONTAINS toLower($name)${layerFilter}
          RETURN e.name AS name
          ORDER BY size(e.name) ASC
-         LIMIT 1`,
-        { name: entityName },
-      );
+         LIMIT 1`;
+
+      const matchParams: Record<string, unknown> = { name: entityName };
+      if (layer) matchParams.layer = layer;
+
+      const matchResult = await session.run(matchQuery, matchParams);
 
       if (matchResult.records.length === 0) return null;
       const matchedName = matchResult.records[0]!.get("name") as string;
 
       // Traverse graph
-      const traverseResult = await session.run(
-        `MATCH path = (start:Entity {name: $name})-[:SUBJECT_OF|OBJECT_IS*1..${depth * 2}]-(connected)
+      const startFilter = layer ? "{name: $name, layer: $layer}" : "{name: $name}";
+      const traverseQuery = `MATCH path = (start:Entity ${startFilter})-[:SUBJECT_OF|OBJECT_IS*1..${depth * 2}]-(connected)
          WHERE connected:Entity OR connected:Fact
          WITH connected, length(path) AS dist
          ORDER BY dist
@@ -156,9 +187,9 @@ export function initNeo4j(): StorageBackend {
          OPTIONAL MATCH (s:Entity)-[:SUBJECT_OF]->(n)-[:OBJECT_IS]->(o:Entity) WHERE n:Fact
          RETURN labels(n)[0] AS type, n.name AS entity_name,
                 s.name AS subject, n.predicate AS predicate, o.name AS object,
-                n.content AS fact`,
-        { name: matchedName },
-      );
+                n.content AS fact`;
+
+      const traverseResult = await session.run(traverseQuery, { name: matchedName, ...(layer ? { layer } : {}) });
 
       const entities: string[] = [];
       const facts: GraphResult["facts"] = [];
@@ -187,18 +218,25 @@ export function initNeo4j(): StorageBackend {
 
   async function listEntities(pattern?: string): Promise<EntityInfo[]> {
     return withSession(async (session) => {
+      const layerFilter = layer ? " AND e.layer = $layer" : "";
+
       const query = pattern
         ? `MATCH (e:Entity)
-           WHERE toLower(e.name) CONTAINS toLower($pattern)
+           WHERE toLower(e.name) CONTAINS toLower($pattern)${layerFilter}
            OPTIONAL MATCH (e)-[:SUBJECT_OF]->(f:Fact)
            RETURN e.name AS name, count(f) AS fact_count
            ORDER BY e.name`
         : `MATCH (e:Entity)
+           WHERE 1=1${layerFilter}
            OPTIONAL MATCH (e)-[:SUBJECT_OF]->(f:Fact)
            RETURN e.name AS name, count(f) AS fact_count
            ORDER BY e.name`;
 
-      const result = await session.run(query, pattern ? { pattern } : {});
+      const params: Record<string, unknown> = {};
+      if (pattern) params.pattern = pattern;
+      if (layer) params.layer = layer;
+
+      const result = await session.run(query, params);
 
       return result.records.map((r) => ({
         name: r.get("name") as string,
@@ -209,14 +247,16 @@ export function initNeo4j(): StorageBackend {
 
   async function getCandidateFacts(scope: "global" | "project"): Promise<CandidateFact[]> {
     return withSession(async (session) => {
+      const layerFilter = layer ? " AND f.layer = $layer" : "";
+
       const result = await session.run(
         `MATCH (subj:Entity)-[:SUBJECT_OF]->(f:Fact)-[:OBJECT_IS]->(obj:Entity)
-         WHERE f.scope_candidate = $scope
+         WHERE f.scope_candidate = $scope${layerFilter}
          RETURN id(f) AS factId, subj.name AS subject, f.predicate AS predicate,
                 obj.name AS object, f.content AS content, f.context AS context,
                 f.source AS source, f.scope_candidate AS scopeCandidate
          ORDER BY f.created_at DESC`,
-        { scope },
+        { scope, ...(layer ? { layer } : {}) },
       );
       return result.records.map((r) => ({
         factId: r.get("factId").toNumber(),

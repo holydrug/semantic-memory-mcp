@@ -11,14 +11,14 @@ import { initNeo4j } from "./neo4j.js";
 export function createBackend(config: Config, layer: "project" | "global"): StorageBackend {
   if (layer === "global") {
     if (config.globalStorageProvider === "neo4j") {
-      return initNeo4j();
+      return initNeo4j(config.dualMode ? layer : undefined);
     }
     return sqliteBackend(initDb(config.globalDbPath));
   }
 
   // project layer
   if (config.storageProvider === "neo4j") {
-    return initNeo4j();
+    return initNeo4j(config.dualMode ? layer : undefined);
   }
   return sqliteBackend(initDb());
 }
