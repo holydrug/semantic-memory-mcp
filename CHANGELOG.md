@@ -1,3 +1,10 @@
+## [0.7.1](https://github.com/holydrug/claude-memory/compare/v0.7.0...v0.7.1) (2026-03-02)
+
+
+### Bug Fixes
+
+* include dual mode vars in global MCP config when per-project enabled ([0d60a34](https://github.com/holydrug/claude-memory/commit/0d60a34df6cca4edbaeffb52f8f954b6ad132ff8))
+
 # [0.7.0](https://github.com/holydrug/claude-memory/compare/v0.6.0...v0.7.0) (2026-03-02)
 
 
