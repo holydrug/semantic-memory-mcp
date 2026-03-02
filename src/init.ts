@@ -667,8 +667,18 @@ export async function runInit(): Promise<void> {
     // Always update global mcpServers entry (including re-runs with new settings)
     const mcpServers = (config["mcpServers"] ?? {}) as Record<string, unknown>;
     const globalEntry: Record<string, unknown> = { ...serverEntry };
-    if (Object.keys(result.envVars).length > 0) {
-      globalEntry["env"] = { ...result.envVars };
+    const globalEnv: Record<string, string> = { ...result.envVars };
+
+    if (enablePerProject) {
+      const globalMemDir = join(homedir(), ".cache", "claude-memory");
+      globalEnv["CLAUDE_MEMORY_GLOBAL_DIR"] = globalMemDir;
+      if (result.envVars["STORAGE_PROVIDER"] === "neo4j") {
+        globalEnv["GLOBAL_STORAGE_PROVIDER"] = "neo4j";
+      }
+    }
+
+    if (Object.keys(globalEnv).length > 0) {
+      globalEntry["env"] = globalEnv;
     }
     mcpServers["semantic-memory"] = globalEntry;
     config["mcpServers"] = mcpServers;
