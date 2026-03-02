@@ -190,12 +190,19 @@ You can also configure triggers interactively during `npx semantic-memory-mcp@la
 
 ## Updating
 
-All configs use `npx -y semantic-memory-mcp@latest` — this always pulls the latest version from npm automatically. No manual updates needed.
+All configs use `npx -y semantic-memory-mcp@latest` — this pulls the latest version from npm automatically.
 
 Check your current version:
 
 ```bash
 npx semantic-memory-mcp@latest --version
+```
+
+If npx serves a stale cached version, clear the cache:
+
+```bash
+npx --yes clear-npx-cache
+npm cache clean --force
 ```
 
 ## Requirements

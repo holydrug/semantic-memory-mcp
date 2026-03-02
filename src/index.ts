@@ -2,6 +2,9 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { getConfig } from "./config.js";
 import { initDb, sqliteBackend } from "./db.js";
 import { initNeo4j } from "./neo4j.js";
@@ -13,6 +16,10 @@ import { registerSearchTool } from "./tools/search.js";
 import { registerGraphTool } from "./tools/graph.js";
 import { registerListTool } from "./tools/list.js";
 import type { StorageBackend } from "./types.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8")) as { version: string };
+const VERSION = pkg.version;
 
 // CLI subcommands
 const command = process.argv[2];
@@ -46,7 +53,7 @@ if (command === "promote") {
 }
 
 if (command === "version" || command === "--version" || command === "-v") {
-  console.log("semantic-memory-mcp 0.5.0");
+  console.log(`semantic-memory-mcp ${VERSION}`);
   process.exit(0);
 }
 
@@ -90,7 +97,7 @@ Environment variables:
 // MCP Server mode
 const server = new McpServer({
   name: "semantic-memory",
-  version: "0.5.0",
+  version: VERSION,
 });
 
 const config = getConfig();
