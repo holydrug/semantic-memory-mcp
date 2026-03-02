@@ -18,7 +18,7 @@ export function createBackend(config: Config, layer: "project" | "global"): Stor
 
   // project layer
   if (config.storageProvider === "neo4j") {
-    return initNeo4j(config.dualMode ? layer : undefined);
+    return initNeo4j(config.dualMode ? config.projectSlug : undefined);
   }
   return sqliteBackend(initDb());
 }

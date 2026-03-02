@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { basename, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir, platform, arch } from "node:os";
 import { execSync } from "node:child_process";
@@ -675,6 +675,7 @@ export async function runInit(): Promise<void> {
 
     if (enablePerProject) {
       const cwd = process.cwd();
+      const slug = basename(cwd);
       const globalMemDir = join(homedir(), ".cache", "claude-memory");
 
       // Build per-project env with dual mode vars
@@ -682,6 +683,7 @@ export async function runInit(): Promise<void> {
         ...result.envVars,
         CLAUDE_MEMORY_DIR: "./.semantic-memory",
         CLAUDE_MEMORY_GLOBAL_DIR: globalMemDir,
+        CLAUDE_MEMORY_PROJECT_SLUG: slug,
         ...(result.envVars["STORAGE_PROVIDER"] === "neo4j"
           ? { GLOBAL_STORAGE_PROVIDER: "neo4j" }
           : {}),

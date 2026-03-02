@@ -41,7 +41,7 @@ async function ensureSchema(session: Session, dim: number): Promise<void> {
   );
 }
 
-export function initNeo4j(layer?: "project" | "global"): StorageBackend {
+export function initNeo4j(layer?: string): StorageBackend {
   const config = getConfig();
   const driver: Driver = neo4j.driver(
     config.neo4jUri,

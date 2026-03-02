@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { mkdirSync } from "node:fs";
 
 export interface Config {
@@ -22,6 +22,7 @@ export interface Config {
   globalDir: string;
   globalDbPath: string;
   globalStorageProvider: "sqlite" | "neo4j";
+  projectSlug: string;
 }
 
 const DEFAULT_DIM = {
@@ -57,6 +58,9 @@ export function getConfig(): Config {
 
   const globalStorageProvider = (process.env["GLOBAL_STORAGE_PROVIDER"] ?? "sqlite") as Config["globalStorageProvider"];
 
+  const projectSlug = process.env["CLAUDE_MEMORY_PROJECT_SLUG"]
+    ?? basename(process.cwd());
+
   return {
     storageProvider,
     dbPath: process.env["CLAUDE_MEMORY_DB"] ?? join(dataDir, "memory.db"),
@@ -77,5 +81,6 @@ export function getConfig(): Config {
     globalDir,
     globalDbPath: process.env["CLAUDE_MEMORY_GLOBAL_DB"] ?? join(globalDir, "memory.db"),
     globalStorageProvider,
+    projectSlug,
   };
 }
