@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/holydrug/semantic-memory-mcp/compare/v1.0.0...v1.0.1) (2026-03-03)
+
+
+### Bug Fixes
+
+* update CHANGELOG URLs to match renamed repository ([608515c](https://github.com/holydrug/semantic-memory-mcp/commit/608515c61c5fe3e001dcf19e2b46f6ef19b7f397))
+
 # [1.0.0](https://github.com/holydrug/semantic-memory-mcp/compare/v0.9.0...v1.0.0) (2026-03-03)
 
 
