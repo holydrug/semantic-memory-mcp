@@ -40,7 +40,7 @@ export function registerGraphTool(server: McpServer, db: StorageBackend, config:
       lines.push(`\nFacts (${result.facts.length}):`);
       for (const f of result.facts) {
         lines.push(
-          `  [${f.subject}] -[${f.predicate}]-> [${f.object}]: ${f.fact}`
+          `  (id: ${f.factId}) [${f.subject}] -[${f.predicate}]-> [${f.object}]: ${f.fact}`
         );
       }
 

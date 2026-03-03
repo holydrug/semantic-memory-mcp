@@ -132,7 +132,7 @@ export function initNeo4j(layer?: string): StorageBackend {
          MATCH (subj:Entity)-[:SUBJECT_OF]->(f)-[:OBJECT_IS]->(obj:Entity)
          RETURN subj.name AS subject, f.predicate AS predicate, obj.name AS object,
                 f.content AS fact, f.context AS context, f.source AS source,
-                score
+                score, id(f) AS factId
          ORDER BY score DESC`;
 
       const queryParams: Record<string, unknown> = {
@@ -151,6 +151,7 @@ export function initNeo4j(layer?: string): StorageBackend {
         context: r.get("context") as string,
         source: (r.get("source") as string) || "",
         score: r.get("score") as number,
+        factId: String(r.get("factId").toNumber()),
       }));
     });
   }
@@ -187,7 +188,7 @@ export function initNeo4j(layer?: string): StorageBackend {
          OPTIONAL MATCH (s:Entity)-[:SUBJECT_OF]->(n)-[:OBJECT_IS]->(o:Entity) WHERE n:Fact
          RETURN labels(n)[0] AS type, n.name AS entity_name,
                 s.name AS subject, n.predicate AS predicate, o.name AS object,
-                n.content AS fact`;
+                n.content AS fact, id(n) AS factId`;
 
       const traverseResult = await session.run(traverseQuery, { name: matchedName, ...(layer ? { layer } : {}) });
 
@@ -207,6 +208,7 @@ export function initNeo4j(layer?: string): StorageBackend {
               predicate: r.get("predicate") as string,
               object: r.get("object") as string,
               fact: r.get("fact") as string,
+              factId: String(r.get("factId").toNumber()),
             });
           }
         }
@@ -281,6 +283,20 @@ export function initNeo4j(layer?: string): StorageBackend {
     });
   }
 
+  async function deleteFact(factId: number): Promise<boolean> {
+    return withSession(async (session) => {
+      const layerFilter = layer ? " AND f.layer = $layer" : "";
+      const result = await session.run(
+        `MATCH (f:Fact) WHERE id(f) = $factId${layerFilter}
+         DETACH DELETE f
+         RETURN count(f) AS deleted`,
+        { factId: neo4j.int(factId), ...(layer ? { layer } : {}) },
+      );
+      const deleted = result.records[0]?.get("deleted")?.toNumber() ?? 0;
+      return deleted > 0;
+    });
+  }
+
   async function close(): Promise<void> {
     await driver.close();
   }
@@ -291,6 +307,7 @@ export function initNeo4j(layer?: string): StorageBackend {
     searchFacts,
     graphTraverse,
     listEntities,
+    deleteFact,
     getCandidateFacts,
     updateFactScope,
     close,

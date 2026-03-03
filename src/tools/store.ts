@@ -1,13 +1,10 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { StorageBackend, DualStorageBackend, EmbedFn } from "../types.js";
+import type { StorageBackend, EmbedFn } from "../types.js";
+import { isDualBackend } from "../types.js";
 import type { Config } from "../config.js";
 import { buildDescription } from "../triggers.js";
 import { classifyScope } from "../classify.js";
-
-function isDualBackend(db: StorageBackend): db is DualStorageBackend {
-  return "isDual" in db && (db as DualStorageBackend).isDual === true;
-}
 
 export function registerStoreTool(
   server: McpServer,

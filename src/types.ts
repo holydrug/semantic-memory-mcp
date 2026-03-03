@@ -19,6 +19,7 @@ export interface SearchResult {
   context: string;
   source: string;
   score: number;
+  factId: string;
   sourceLayer?: "project" | "global";
 }
 
@@ -30,6 +31,7 @@ export interface GraphResult {
     predicate: string;
     object: string;
     fact: string;
+    factId: string;
   }>;
 }
 
@@ -56,6 +58,7 @@ export interface StorageBackend {
   searchFacts(embedding: Float32Array, limit: number): Promise<SearchResult[]>;
   graphTraverse(entityName: string, depth: number): Promise<GraphResult | null>;
   listEntities(pattern?: string): Promise<EntityInfo[]>;
+  deleteFact(factId: number): Promise<boolean>;
   close(): Promise<void>;
   getCandidateFacts?(scope: "global" | "project"): Promise<CandidateFact[]>;
   updateFactScope?(factId: number, scope: "global" | "project" | null): Promise<void>;
@@ -65,4 +68,38 @@ export interface StorageBackend {
 export interface DualStorageBackend extends StorageBackend {
   getLayerBackend(scope: "global" | "project"): StorageBackend;
   readonly isDual: true;
+}
+
+/** Type guard: check if a backend is a dual-layer backend */
+export function isDualBackend(db: StorageBackend): db is DualStorageBackend {
+  return "isDual" in db && (db as DualStorageBackend).isDual === true;
+}
+
+/** Parse a fact ID string into layer + numeric ID (dual mode) or just numeric ID (single mode) */
+export function parseFactId(
+  id: string,
+  isDual: boolean,
+): { layer?: "project" | "global"; numericId: number } | { error: string } {
+  if (isDual) {
+    const colonIdx = id.indexOf(":");
+    if (colonIdx === -1) {
+      return { error: `expected format 'project:<id>' or 'global:<id>'` };
+    }
+    const layerStr = id.slice(0, colonIdx);
+    const numericId = parseInt(id.slice(colonIdx + 1), 10);
+
+    if (layerStr !== "project" && layerStr !== "global") {
+      return { error: `unknown layer '${layerStr}'` };
+    }
+    if (isNaN(numericId)) {
+      return { error: "invalid numeric ID" };
+    }
+    return { layer: layerStr, numericId };
+  }
+
+  const numericId = parseInt(id, 10);
+  if (isNaN(numericId)) {
+    return { error: "invalid numeric ID" };
+  }
+  return { numericId };
 }

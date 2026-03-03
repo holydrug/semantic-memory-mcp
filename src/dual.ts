@@ -38,9 +38,15 @@ export function createDualBackend(
       global.searchFacts(embedding, limit),
     ]);
 
-    // Tag source layer
-    for (const r of projectResults) r.sourceLayer = "project";
-    for (const r of globalResults) r.sourceLayer = "global";
+    // Tag source layer and prefix factId
+    for (const r of projectResults) {
+      r.sourceLayer = "project";
+      r.factId = "project:" + r.factId;
+    }
+    for (const r of globalResults) {
+      r.sourceLayer = "global";
+      r.factId = "global:" + r.factId;
+    }
 
     // Merge and deduplicate by subject|predicate|object
     const seen = new Set<string>();
@@ -65,6 +71,15 @@ export function createDualBackend(
     ]);
 
     if (!projectResult && !globalResult) return null;
+
+    // Prefix factIds before merging
+    if (projectResult) {
+      for (const f of projectResult.facts) f.factId = "project:" + f.factId;
+    }
+    if (globalResult) {
+      for (const f of globalResult.facts) f.factId = "global:" + f.factId;
+    }
+
     if (!projectResult) return globalResult;
     if (!globalResult) return projectResult;
 
@@ -118,6 +133,13 @@ export function createDualBackend(
     }
   }
 
+  async function deleteFact(_factId: number): Promise<boolean> {
+    throw new Error(
+      "Direct deleteFact() not supported in dual mode. " +
+      "Use getLayerBackend(layer).deleteFact(id) with parsed composite IDs."
+    );
+  }
+
   async function close(): Promise<void> {
     await Promise.all([project.close(), global.close()]);
   }
@@ -130,6 +152,7 @@ export function createDualBackend(
     searchFacts,
     graphTraverse,
     listEntities,
+    deleteFact,
     getCandidateFacts,
     updateFactScope,
     close,

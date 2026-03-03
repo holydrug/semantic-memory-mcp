@@ -15,6 +15,7 @@ import { registerStoreTool } from "./tools/store.js";
 import { registerSearchTool } from "./tools/search.js";
 import { registerGraphTool } from "./tools/graph.js";
 import { registerListTool } from "./tools/list.js";
+import { registerDeleteTool } from "./tools/delete.js";
 import type { StorageBackend } from "./types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -52,6 +53,27 @@ if (command === "promote") {
   process.exit(0);
 }
 
+if (command === "delete") {
+  const config = getConfig();
+  let backend: StorageBackend;
+  if (config.dualMode) {
+    const projectBackend = createBackend(config, "project");
+    const globalBackend = createBackend(config, "global");
+    backend = createDualBackend(projectBackend, globalBackend);
+  } else if (config.storageProvider === "neo4j") {
+    backend = initNeo4j();
+  } else {
+    backend = sqliteBackend(initDb());
+  }
+
+  const embed = await initEmbeddings();
+  const { runDelete } = await import("./delete-cmd.js");
+  await runDelete(backend, embed, process.argv.slice(3));
+
+  await backend.close();
+  process.exit(0);
+}
+
 if (command === "version" || command === "--version" || command === "-v") {
   console.log(`semantic-memory-mcp ${VERSION}`);
   process.exit(0);
@@ -61,10 +83,12 @@ if (command === "help" || command === "--help" || command === "-h") {
   console.log(`semantic-memory-mcp — Semantic memory MCP server for Claude Code
 
 Usage:
-  semantic-memory-mcp           Start MCP server (stdio transport)
-  semantic-memory-mcp init      Add to ~/.claude.json and activate
-  semantic-memory-mcp promote   Promote project facts to global memory
-  semantic-memory-mcp version   Show version
+  semantic-memory-mcp                        Start MCP server (stdio transport)
+  semantic-memory-mcp init                   Add to ~/.claude.json and activate
+  semantic-memory-mcp promote                Promote project facts to global memory
+  semantic-memory-mcp delete <id1> [id2 ..]  Delete facts by ID
+  semantic-memory-mcp delete --search "q"    Search and interactively delete facts
+  semantic-memory-mcp version                Show version
 
 Environment variables:
   STORAGE_PROVIDER             "sqlite" (default) or "neo4j"
@@ -86,6 +110,7 @@ Environment variables:
   MEMORY_TRIGGERS_SEARCH       Extra trigger words for memory_search (comma-separated)
   MEMORY_TRIGGERS_GRAPH        Extra trigger words for memory_graph (comma-separated)
   MEMORY_TRIGGERS_LIST         Extra trigger words for memory_list_entities (comma-separated)
+  MEMORY_TRIGGERS_DELETE       Extra trigger words for memory_delete (comma-separated)
 
   CLAUDE_MEMORY_GLOBAL_DIR     Global memory directory (enables dual mode)
   CLAUDE_MEMORY_GLOBAL_DB      Global SQLite database path
@@ -122,6 +147,7 @@ registerStoreTool(server, backend, embed, config);
 registerSearchTool(server, backend, embed, config);
 registerGraphTool(server, backend, config);
 registerListTool(server, backend, config);
+registerDeleteTool(server, backend, config);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

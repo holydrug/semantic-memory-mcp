@@ -35,7 +35,7 @@ export function registerSearchTool(
 
       const lines = results.map(
         (r) =>
-          `[${r.score.toFixed(3)}] [${r.subject}] -[${r.predicate}]-> [${r.object}]\n` +
+          `[${r.score.toFixed(3)}] (id: ${r.factId}) [${r.subject}] -[${r.predicate}]-> [${r.object}]\n` +
           `  Fact: ${r.fact}\n` +
           `  Context: ${r.context}\n` +
           `  Source: ${r.source || "n/a"}`

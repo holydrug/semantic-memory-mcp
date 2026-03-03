@@ -18,6 +18,7 @@ export interface Config {
   triggersSearch?: string;
   triggersGraph?: string;
   triggersList?: string;
+  triggersDelete?: string;
   dualMode: boolean;
   globalDir: string;
   globalDbPath: string;
@@ -77,6 +78,7 @@ export function getConfig(): Config {
     triggersSearch: process.env["MEMORY_TRIGGERS_SEARCH"],
     triggersGraph: process.env["MEMORY_TRIGGERS_GRAPH"],
     triggersList: process.env["MEMORY_TRIGGERS_LIST"],
+    triggersDelete: process.env["MEMORY_TRIGGERS_DELETE"],
     dualMode,
     globalDir,
     globalDbPath: process.env["CLAUDE_MEMORY_GLOBAL_DB"] ?? join(globalDir, "memory.db"),

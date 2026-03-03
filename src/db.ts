@@ -49,6 +49,7 @@ export interface Db {
   searchFacts(embedding: Float32Array, limit: number): SearchResult[];
   graphTraverse(entityName: string, depth: number): GraphResult | null;
   listEntities(pattern?: string): EntityInfo[];
+  deleteFact(factId: number): boolean;
   getCandidateFacts(scope: "global" | "project"): CandidateFact[];
   updateFactScope(factId: number, scope: "global" | "project" | null): void;
   close(): void;
@@ -160,7 +161,8 @@ export function initDb(dbPathOverride?: string): Db {
       f.content AS fact,
       f.context,
       f.source,
-      (1.0 - knn.distance) AS score
+      (1.0 - knn.distance) AS score,
+      f.id AS factId
     FROM knn
     JOIN facts f ON f.id = knn.rowid
     JOIN entities e_subj ON e_subj.id = f.subject_id
@@ -215,7 +217,10 @@ export function initDb(dbPathOverride?: string): Db {
   }
 
   function searchFacts(embedding: Float32Array, limit: number): SearchResult[] {
-    return knnSearch.all(vecBuf(embedding), limit) as SearchResult[];
+    const rows = knnSearch.all(vecBuf(embedding), limit) as Array<
+      Omit<SearchResult, "factId"> & { factId: number }
+    >;
+    return rows.map((r) => ({ ...r, factId: String(r.factId) }));
   }
 
   function graphTraverse(entityName: string, depth: number): GraphResult | null {
@@ -259,7 +264,8 @@ export function initDb(dbPathOverride?: string): Db {
         e_subj.name AS subject,
         f.predicate,
         e_obj.name AS object,
-        f.content AS fact
+        f.content AS fact,
+        f.id AS factId
       FROM facts f
       JOIN entities e_subj ON e_subj.id = f.subject_id
       JOIN entities e_obj ON e_obj.id = f.object_id
@@ -272,12 +278,13 @@ export function initDb(dbPathOverride?: string): Db {
       predicate: string;
       object: string;
       fact: string;
+      factId: number;
     }>;
 
     return {
       matchedName: match.name,
       entities: entityRows.map((r) => r.name),
-      facts: factRows,
+      facts: factRows.map((r) => ({ ...r, factId: String(r.factId) })),
     };
   }
 
@@ -314,6 +321,19 @@ export function initDb(dbPathOverride?: string): Db {
     "UPDATE facts SET scope_candidate = ? WHERE id = ?"
   );
 
+  const deleteFactEmbedding = db.prepare(
+    "DELETE FROM fact_embeddings WHERE rowid = ?"
+  );
+  const deleteFactRow = db.prepare(
+    "DELETE FROM facts WHERE id = ?"
+  );
+
+  function deleteFact(factId: number): boolean {
+    deleteFactEmbedding.run(BigInt(factId));
+    const result = deleteFactRow.run(factId);
+    return result.changes > 0;
+  }
+
   function getCandidateFacts(scope: "global" | "project"): CandidateFact[] {
     return selectCandidates.all(scope) as CandidateFact[];
   }
@@ -328,6 +348,7 @@ export function initDb(dbPathOverride?: string): Db {
     searchFacts,
     graphTraverse,
     listEntities,
+    deleteFact,
     getCandidateFacts,
     updateFactScope,
     close: () => db.close(),
@@ -401,6 +422,7 @@ export function sqliteBackend(db: Db): StorageBackend {
     searchFacts: async (embedding, limit) => db.searchFacts(embedding, limit),
     graphTraverse: async (entityName, depth) => db.graphTraverse(entityName, depth),
     listEntities: async (pattern) => db.listEntities(pattern),
+    deleteFact: async (factId) => db.deleteFact(factId),
     getCandidateFacts: async (scope) => db.getCandidateFacts(scope),
     updateFactScope: async (factId, scope) => db.updateFactScope(factId, scope),
     close: async () => db.close(),
