@@ -1,3 +1,26 @@
+# [1.0.0](https://github.com/holydrug/semantic-memory-mcp/compare/v0.9.0...v1.0.0) (2026-03-03)
+
+
+* feat!: remove SQLite backend, Neo4j is now the only storage engine ([5733fef](https://github.com/holydrug/semantic-memory-mcp/commit/5733fef2d32fc59d46605b9b50d421aa048fed03))
+
+
+### Bug Fixes
+
+* update repository URL to match renamed GitHub repo ([8bc252d](https://github.com/holydrug/semantic-memory-mcp/commit/8bc252ddc0b321c7c589ace47f94ae86a2195e11))
+
+
+### BREAKING CHANGES
+
+* SQLite storage backend has been removed. Neo4j via Docker
+is now required. The init wizard no longer offers Lightweight/Full mode
+choice — it always sets up Neo4j with a choice of builtin or ollama
+embeddings. Removed dependencies: better-sqlite3, sqlite-vec.
+
+Removed env vars: STORAGE_PROVIDER, CLAUDE_MEMORY_DB,
+CLAUDE_MEMORY_GLOBAL_DB, GLOBAL_STORAGE_PROVIDER.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
 # [0.9.0](https://github.com/holydrug/claude-memory/compare/v0.8.1...v0.9.0) (2026-03-03)
 
 
