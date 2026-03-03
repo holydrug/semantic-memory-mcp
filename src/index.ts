@@ -6,7 +6,6 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { getConfig } from "./config.js";
-import { initDb, sqliteBackend } from "./db.js";
 import { initNeo4j } from "./neo4j.js";
 import { initEmbeddings } from "./embeddings.js";
 import { createBackend } from "./backend-factory.js";
@@ -60,10 +59,8 @@ if (command === "delete") {
     const projectBackend = createBackend(config, "project");
     const globalBackend = createBackend(config, "global");
     backend = createDualBackend(projectBackend, globalBackend);
-  } else if (config.storageProvider === "neo4j") {
-    backend = initNeo4j();
   } else {
-    backend = sqliteBackend(initDb());
+    backend = initNeo4j();
   }
 
   const embed = await initEmbeddings();
@@ -91,9 +88,7 @@ Usage:
   semantic-memory-mcp version                Show version
 
 Environment variables:
-  STORAGE_PROVIDER             "sqlite" (default) or "neo4j"
   CLAUDE_MEMORY_DIR            Data directory (default: ~/.cache/claude-memory)
-  CLAUDE_MEMORY_DB             SQLite database path
   CLAUDE_MEMORY_MODEL_CACHE    Embedding model cache directory
 
   EMBEDDING_PROVIDER           "builtin" (default) or "ollama"
@@ -113,8 +108,6 @@ Environment variables:
   MEMORY_TRIGGERS_DELETE       Extra trigger words for memory_delete (comma-separated)
 
   CLAUDE_MEMORY_GLOBAL_DIR     Global memory directory (enables dual mode)
-  CLAUDE_MEMORY_GLOBAL_DB      Global SQLite database path
-  GLOBAL_STORAGE_PROVIDER      Global storage backend: "sqlite" (default) or "neo4j"
 `);
   process.exit(0);
 }
@@ -133,12 +126,9 @@ if (config.dualMode) {
   const projectBackend = createBackend(config, "project");
   const globalBackend = createBackend(config, "global");
   backend = createDualBackend(projectBackend, globalBackend);
-} else if (config.storageProvider === "neo4j") {
+} else {
   console.error("[claude-memory] Using Neo4j storage backend");
   backend = initNeo4j();
-} else {
-  console.error("[claude-memory] Using SQLite storage backend");
-  backend = sqliteBackend(initDb());
 }
 
 const embed = await initEmbeddings();

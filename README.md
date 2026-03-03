@@ -1,6 +1,6 @@
 # semantic-memory-mcp
 
-Persistent memory for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Knowledge graph with semantic search — works locally, no API keys needed.
+Persistent memory for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Knowledge graph with semantic search — powered by Neo4j.
 
 ## Quick start
 
@@ -9,18 +9,21 @@ npx semantic-memory-mcp@0.9.0 init
 # Restart Claude Code — done!
 ```
 
-The interactive wizard lets you choose between two modes:
+The interactive wizard sets up Neo4j via Docker Compose and lets you choose an embedding provider:
 
-| Mode | Storage | Embeddings | Dependencies |
-|------|---------|------------|--------------|
-| **Lightweight** | SQLite | Built-in (all-MiniLM-L6-v2, 384-dim) | None |
-| **Full** | Neo4j | Ollama (nomic-embed-text, 768-dim+) | Docker |
+- **builtin** — all-MiniLM-L6-v2, 384-dim, runs on CPU, no extra dependencies
+- **ollama** — higher-quality models (nomic-embed-text 768-dim, mxbai-embed-large 1024-dim) via local Ollama
 
-**Full mode** generates a `docker-compose.yml` with Neo4j + Ollama, starts containers, pulls the embedding model — all from the wizard. On macOS it installs Ollama natively via Homebrew for Metal GPU acceleration.
+On macOS it installs Ollama natively via Homebrew for Metal GPU acceleration.
+
+## Requirements
+
+- Node.js >= 18
+- Docker + Docker Compose
 
 ## Dual mode: project + global memory
 
-By default all facts go into one global database (`~/.cache/claude-memory/`). With **dual mode** you get two layers:
+By default all facts go into one Neo4j database. With **dual mode** you get two layers:
 
 | Layer | Location | Contains |
 |-------|----------|----------|
@@ -31,7 +34,6 @@ Enable during init (on by default):
 
 ```bash
 npx semantic-memory-mcp@0.9.0 init
-# → Choose mode (Lightweight / Full)
 # → "Share knowledge between projects?" → Y
 ```
 
@@ -71,7 +73,12 @@ Added automatically by `npx semantic-memory-mcp@0.9.0 init`. Config lives in `~/
     "semantic-memory": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "semantic-memory-mcp@0.9.0"]
+      "args": ["-y", "semantic-memory-mcp@0.9.0"],
+      "env": {
+        "NEO4J_URI": "bolt://localhost:7687",
+        "NEO4J_USER": "neo4j",
+        "NEO4J_PASSWORD": "memory_pass_2024"
+      }
     }
   }
 }
@@ -89,7 +96,10 @@ Create `.mcp.json` in the project root. Committed to the repo so the team shares
       "command": "npx",
       "args": ["-y", "semantic-memory-mcp@0.9.0"],
       "env": {
-        "CLAUDE_MEMORY_DIR": "./.semantic-memory"
+        "CLAUDE_MEMORY_DIR": "./.semantic-memory",
+        "NEO4J_URI": "bolt://localhost:7687",
+        "NEO4J_USER": "neo4j",
+        "NEO4J_PASSWORD": "memory_pass_2024"
       }
     }
   }
@@ -111,7 +121,10 @@ A single global entry in `~/.claude.json` handles all projects — no per-projec
       "args": ["-y", "semantic-memory-mcp@0.9.0"],
       "env": {
         "CLAUDE_MEMORY_DIR": "./.semantic-memory",
-        "CLAUDE_MEMORY_GLOBAL_DIR": "/home/user/.cache/claude-memory"
+        "CLAUDE_MEMORY_GLOBAL_DIR": "/home/user/.cache/claude-memory",
+        "NEO4J_URI": "bolt://localhost:7687",
+        "NEO4J_USER": "neo4j",
+        "NEO4J_PASSWORD": "memory_pass_2024"
       }
     }
   }
@@ -120,12 +133,13 @@ A single global entry in `~/.claude.json` handles all projects — no per-projec
 
 ## What it does
 
-Claude Code gets 4 tools to remember things across sessions:
+Claude Code gets 5 tools to remember things across sessions:
 
 - **`memory_store`** — save a fact as a Subject → Predicate → Object triple
 - **`memory_search`** — find facts by meaning (vector similarity)
 - **`memory_graph`** — explore connections around an entity
 - **`memory_list_entities`** — list everything stored
+- **`memory_delete`** — delete a fact by ID
 
 ```
 > "Remember that billing-service uses PostgreSQL 16"
@@ -140,7 +154,7 @@ Claude Code gets 4 tools to remember things across sessions:
 | Model | Dim | Size | Best for |
 |-------|-----|------|----------|
 | `all-MiniLM-L6-v2` (builtin) | 384 | 80 MB | Zero-setup, good enough for most use cases |
-| `nomic-embed-text` | 768 | 274 MB | Best balance of quality and speed (recommended for Full) |
+| `nomic-embed-text` | 768 | 274 MB | Best balance of quality and speed (recommended with Ollama) |
 | `mxbai-embed-large` | 1024 | 670 MB | Highest quality, complex semantic relationships |
 | `all-minilm` | 384 | 45 MB | Smallest Ollama model, fast |
 
@@ -148,9 +162,7 @@ Claude Code gets 4 tools to remember things across sessions:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `STORAGE_PROVIDER` | `sqlite` | `sqlite` or `neo4j` |
 | `CLAUDE_MEMORY_DIR` | `~/.cache/claude-memory` | Data directory |
-| `CLAUDE_MEMORY_DB` | `<data-dir>/memory.db` | SQLite database path |
 | `CLAUDE_MEMORY_MODEL_CACHE` | `<data-dir>/models` | Embedding model cache |
 | `EMBEDDING_PROVIDER` | `builtin` | `builtin` or `ollama` |
 | `EMBEDDING_DIM` | `384` / `768` | Embedding dimension (auto-set by provider) |
@@ -160,8 +172,6 @@ Claude Code gets 4 tools to remember things across sessions:
 | `NEO4J_USER` | `neo4j` | Neo4j username |
 | `NEO4J_PASSWORD` | `memory_pass_2024` | Neo4j password |
 | `CLAUDE_MEMORY_GLOBAL_DIR` | — | Global memory directory (enables dual mode) |
-| `CLAUDE_MEMORY_GLOBAL_DB` | `<global-dir>/memory.db` | Global SQLite database path |
-| `GLOBAL_STORAGE_PROVIDER` | `sqlite` | Global backend: `sqlite` or `neo4j` |
 | `MEMORY_TRIGGERS_STORE` | — | Extra trigger words for `memory_store` (comma-separated) |
 | `MEMORY_TRIGGERS_SEARCH` | — | Extra trigger words for `memory_search` (comma-separated) |
 | `MEMORY_TRIGGERS_GRAPH` | — | Extra trigger words for `memory_graph` (comma-separated) |
@@ -181,6 +191,9 @@ Example — adding Chinese and Spanish triggers:
       "command": "npx",
       "args": ["-y", "semantic-memory-mcp@0.9.0"],
       "env": {
+        "NEO4J_URI": "bolt://localhost:7687",
+        "NEO4J_USER": "neo4j",
+        "NEO4J_PASSWORD": "memory_pass_2024",
         "MEMORY_TRIGGERS_STORE": "记住, recuerda, guardar",
         "MEMORY_TRIGGERS_SEARCH": "搜索记忆, buscar en memoria"
       }
@@ -194,11 +207,6 @@ You can also configure triggers interactively during `npx semantic-memory-mcp@0.
 ## Updating
 
 All commands and configs use a pinned version (`semantic-memory-mcp@0.9.0`). This README is automatically updated on each release, so copying any command from here always gives you the latest version.
-
-## Requirements
-
-- Node.js >= 18
-- Docker (Full mode only)
 
 ## License
 

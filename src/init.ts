@@ -5,7 +5,6 @@ import { homedir, platform, arch } from "node:os";
 import { execSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { DEFAULT_TRIGGERS, type ToolKey } from "./triggers.js";
-import { migrateEmbeddingDim } from "./db.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PKG_VERSION = (JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8")) as { version: string }).version;
@@ -226,18 +225,19 @@ async function pullModelIfNeeded(
 
 // ─── Docker Compose generation ──────────────────────────────
 
-interface FullModeConfig {
+interface SetupConfig {
   neo4jPassword: string;
+  embeddingProvider: "builtin" | "ollama";
   ollamaModel: string;
   embeddingDim: number;
   hasGpu: boolean;
   ollamaInDocker: boolean;
 }
 
-function generateDockerCompose(cfg: FullModeConfig): string {
+function generateDockerCompose(cfg: SetupConfig): string {
   let ollamaBlock = "";
 
-  if (cfg.ollamaInDocker) {
+  if (cfg.embeddingProvider === "ollama" && cfg.ollamaInDocker) {
     const gpuSection = cfg.hasGpu
       ? `
     deploy:
@@ -283,16 +283,28 @@ function generateDockerCompose(cfg: FullModeConfig): string {
 ${ollamaBlock}`;
 }
 
-function generateEnvFile(cfg: FullModeConfig): string {
-  return `STORAGE_PROVIDER=neo4j
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=${cfg.neo4jPassword}
-EMBEDDING_PROVIDER=ollama
-OLLAMA_URL=http://localhost:11434
-OLLAMA_MODEL=${cfg.ollamaModel}
-EMBEDDING_DIM=${cfg.embeddingDim}
-`;
+function generateEnvFile(cfg: SetupConfig): string {
+  const lines = [
+    `NEO4J_URI=bolt://localhost:7687`,
+    `NEO4J_USER=neo4j`,
+    `NEO4J_PASSWORD=${cfg.neo4jPassword}`,
+  ];
+
+  if (cfg.embeddingProvider === "ollama") {
+    lines.push(
+      `EMBEDDING_PROVIDER=ollama`,
+      `OLLAMA_URL=http://localhost:11434`,
+      `OLLAMA_MODEL=${cfg.ollamaModel}`,
+      `EMBEDDING_DIM=${cfg.embeddingDim}`,
+    );
+  } else {
+    lines.push(
+      `EMBEDDING_PROVIDER=builtin`,
+      `EMBEDDING_DIM=${cfg.embeddingDim}`,
+    );
+  }
+
+  return lines.join("\n") + "\n";
 }
 
 function waitForNeo4j(maxWaitSec: number): boolean {
@@ -355,191 +367,7 @@ async function configureTriggerWords(
   }
 }
 
-// ─── Init flows ─────────────────────────────────────────────
-
-async function runLightweightInit(
-  rl: ReturnType<typeof createInterface>,
-): Promise<InitResult> {
-  const envVars: Record<string, string> = {};
-
-  // Embedding provider selection
-  const providerIdx = await choose(
-    rl,
-    "Embedding provider:",
-    ["builtin", "ollama"],
-    [
-      "all-MiniLM-L6-v2, 384-dim, CPU, no dependencies",
-      "higher-quality models via local Ollama (needs Docker or Ollama)",
-    ],
-  );
-
-  const provider = providerIdx === 0 ? "builtin" : "ollama";
-
-  if (provider === "ollama") {
-    await configureOllamaEmbeddings(rl, envVars);
-  }
-
-  await configureTriggerWords(rl, envVars);
-
-  return { envVars };
-}
-
-async function runFullInit(
-  rl: ReturnType<typeof createInterface>,
-): Promise<InitResult> {
-  // Check Docker + Docker Compose
-  if (!isDockerAvailable()) {
-    console.error("\n  Docker is not available. Install Docker first: https://docs.docker.com/get-docker/");
-    process.exit(1);
-  }
-
-  if (!isDockerComposeAvailable()) {
-    console.error("\n  Docker Compose is not available. Install it: https://docs.docker.com/compose/install/");
-    process.exit(1);
-  }
-
-  // Neo4j password
-  const neo4jPassword = (await ask(rl, "\nNeo4j password (default: memory_pass_2024): "))
-    || "memory_pass_2024";
-
-  // Embedding model
-  const modelNames = Object.keys(OLLAMA_MODELS);
-  const modelDescs = modelNames.map(
-    (m) => {
-      const info = OLLAMA_MODELS[m]!;
-      return `${info.dim}-dim, ${info.size} — ${info.desc}`;
-    },
-  );
-  const modelIdx = await choose(rl, "Embedding model:", modelNames, modelDescs);
-  const ollamaModel: string = modelNames[modelIdx] ?? modelNames[0]!;
-  const embeddingDim: number = OLLAMA_MODELS[ollamaModel]?.dim ?? 768;
-
-  // Ollama deployment strategy
-  let ollamaInDocker = true;
-  let hasGpu = false;
-
-  if (isMac()) {
-    console.log("\n  macOS detected. Ollama runs best natively (uses Metal GPU acceleration).");
-    console.log("  Docker Compose will only include Neo4j.");
-    ollamaInDocker = false;
-
-    if (!isOllamaInstalled()) {
-      if (isBrewAvailable()) {
-        if (await askYesNo(rl, "\n  Ollama is not installed. Install via Homebrew?", true)) {
-          if (!installOllamaViaBrew()) {
-            console.error("  Failed to install Ollama. Install manually: brew install ollama");
-          }
-        }
-      } else {
-        console.log("  Ollama is not installed. Install it: https://ollama.com/download/mac");
-      }
-    }
-
-    if (isOllamaInstalled() && !isOllamaRunning("http://localhost:11434")) {
-      if (await askYesNo(rl, "\n  Ollama is installed but not running. Start it?", true)) {
-        startOllamaNative();
-        console.log("  Starting Ollama...");
-        if (waitForOllama("http://localhost:11434", 10)) {
-          console.log("  Ollama is ready.");
-        } else {
-          console.log("  Ollama did not start in time. Run manually: ollama serve");
-        }
-      }
-    }
-  } else {
-    hasGpu = await askYesNo(rl, "\nNVIDIA GPU available?", false);
-  }
-
-  const fullCfg: FullModeConfig = { neo4jPassword, ollamaModel, embeddingDim, hasGpu, ollamaInDocker };
-
-  // Generate files in .semantic-memory/
-  const projectDir = join(process.cwd(), ".semantic-memory");
-  mkdirSync(join(projectDir, "data"), { recursive: true });
-
-  const composePath = join(projectDir, "docker-compose.yml");
-  const envPath = join(projectDir, ".env");
-
-  writeFileSync(composePath, generateDockerCompose(fullCfg));
-  writeFileSync(envPath, generateEnvFile(fullCfg));
-
-  console.log(`\n  Generated:`);
-  console.log(`    ${composePath}`);
-  console.log(`    ${envPath}`);
-
-  // Start containers
-  if (await askYesNo(rl, "\n  Start containers now?", true)) {
-    console.log("\n  Starting containers...");
-    try {
-      execSync(`docker compose -f ${composePath} up -d`, {
-        timeout: 120000,
-        stdio: "inherit",
-      });
-    } catch {
-      console.error("  Failed to start containers. Run manually:");
-      console.error(`    cd ${projectDir} && docker compose up -d`);
-      process.exit(1);
-    }
-
-    // Wait for Neo4j
-    if (!waitForNeo4j(60)) {
-      console.error("  Neo4j did not become healthy in time. Check: docker logs claude-memory-neo4j");
-    } else {
-      console.log("  Neo4j is ready.");
-    }
-
-    // Wait for Ollama (in Docker or native)
-    const ollamaUrl = "http://localhost:11434";
-    if (ollamaInDocker) {
-      if (!waitForOllama(ollamaUrl, 15)) {
-        console.error("  Ollama did not start in time. Check: docker logs claude-memory-ollama");
-      } else {
-        console.log("  Ollama is ready.");
-        await pullModelIfNeeded(rl, ollamaUrl, ollamaModel);
-      }
-    } else {
-      // Native Ollama (macOS)
-      if (isOllamaRunning(ollamaUrl)) {
-        console.log("  Ollama is running natively.");
-        await pullModelIfNeeded(rl, ollamaUrl, ollamaModel);
-      } else {
-        console.log("\n  Ollama is not running. Start it with: ollama serve");
-        console.log(`  Then pull the model: ollama pull ${ollamaModel}`);
-      }
-    }
-
-    // Verify model is actually available before writing config
-    if (isOllamaRunning(ollamaUrl) && !isModelAvailable(ollamaUrl, ollamaModel)) {
-      console.warn(`\n  Warning: Model '${ollamaModel}' is not available in Ollama.`);
-      console.warn(`  MCP server will fail to start until the model is pulled.`);
-      console.warn(`  Run: curl ${ollamaUrl}/api/pull -d '{"name":"${ollamaModel}"}'`);
-    }
-  } else {
-    console.log(`\n  Start later with:`);
-    console.log(`    cd ${projectDir} && docker compose up -d`);
-    if (!ollamaInDocker) {
-      console.log(`    ollama serve  (in a separate terminal)`);
-      console.log(`    ollama pull ${ollamaModel}`);
-    }
-  }
-
-  // Trigger words
-  const triggerEnvVars: Record<string, string> = {};
-  await configureTriggerWords(rl, triggerEnvVars);
-
-  const envVars: Record<string, string> = {
-    STORAGE_PROVIDER: "neo4j",
-    NEO4J_URI: "bolt://localhost:7687",
-    NEO4J_USER: "neo4j",
-    NEO4J_PASSWORD: neo4jPassword,
-    EMBEDDING_PROVIDER: "ollama",
-    OLLAMA_URL: "http://localhost:11434",
-    OLLAMA_MODEL: ollamaModel,
-    EMBEDDING_DIM: String(embeddingDim),
-    ...triggerEnvVars,
-  };
-
-  return { envVars };
-}
+// ─── Ollama configuration (shared) ──────────────────────────
 
 async function configureOllamaEmbeddings(
   rl: ReturnType<typeof createInterface>,
@@ -620,49 +448,180 @@ export async function runInit(): Promise<void> {
       config = {};
     }
 
-    // Step 1: Choose setup mode
-    const modeIdx = await choose(
+    // Step 1: Check Docker + Docker Compose
+    if (!isDockerAvailable()) {
+      console.error("\n  Docker is not available. Install Docker first: https://docs.docker.com/get-docker/");
+      process.exit(1);
+    }
+
+    if (!isDockerComposeAvailable()) {
+      console.error("\n  Docker Compose is not available. Install it: https://docs.docker.com/compose/install/");
+      process.exit(1);
+    }
+
+    // Step 2: Neo4j password
+    const neo4jPassword = (await ask(rl, "\nNeo4j password (default: memory_pass_2024): "))
+      || "memory_pass_2024";
+
+    // Step 3: Embedding provider
+    const providerIdx = await choose(
       rl,
-      "Setup mode:",
-      ["Lightweight", "Full"],
+      "Embedding provider:",
+      ["builtin", "ollama"],
       [
-        "SQLite + built-in embeddings — zero dependencies",
-        "Neo4j + Ollama via Docker Compose — higher quality, your hardware",
+        "all-MiniLM-L6-v2, 384-dim, CPU, no extra dependencies",
+        "Higher-quality models via local Ollama (nomic-embed-text, mxbai-embed-large)",
       ],
     );
 
-    let result: InitResult;
-    if (modeIdx === 0) {
-      result = await runLightweightInit(rl);
-    } else {
-      result = await runFullInit(rl);
-    }
+    const embeddingProvider = providerIdx === 0 ? "builtin" : "ollama";
 
-    // Migrate existing databases if embedding dimension changed
-    const newDim = result.envVars["EMBEDDING_DIM"]
-      ? parseInt(result.envVars["EMBEDDING_DIM"], 10)
-      : 384; // builtin default
+    let ollamaModel = "nomic-embed-text";
+    let embeddingDim = 384;
+    let ollamaInDocker = true;
+    let hasGpu = false;
 
-    const dbsToMigrate = [
-      { label: "Global", path: join(homedir(), ".cache", "claude-memory", "memory.db") },
-      { label: "Project", path: join(process.cwd(), ".semantic-memory", "memory.db") },
-    ];
+    if (embeddingProvider === "ollama") {
+      // Choose model
+      const modelNames = Object.keys(OLLAMA_MODELS);
+      const modelDescs = modelNames.map(
+        (m) => {
+          const info = OLLAMA_MODELS[m]!;
+          return `${info.dim}-dim, ${info.size} — ${info.desc}`;
+        },
+      );
+      const modelIdx = await choose(rl, "Embedding model:", modelNames, modelDescs);
+      ollamaModel = modelNames[modelIdx] ?? modelNames[0]!;
+      embeddingDim = OLLAMA_MODELS[ollamaModel]?.dim ?? 768;
 
-    for (const { label, path } of dbsToMigrate) {
-      try {
-        const m = migrateEmbeddingDim(path, newDim);
-        if (m.status === "migrated") {
-          if (m.droppedFacts! > 0 || m.droppedEntities! > 0) {
-            console.log(
-              `  ${label} DB: dim ${m.oldDim} → ${newDim}, cleared ${m.droppedEntities} entities and ${m.droppedFacts} facts`
-            );
+      // Ollama deployment strategy
+      if (isMac()) {
+        console.log("\n  macOS detected. Ollama runs best natively (uses Metal GPU acceleration).");
+        console.log("  Docker Compose will only include Neo4j.");
+        ollamaInDocker = false;
+
+        if (!isOllamaInstalled()) {
+          if (isBrewAvailable()) {
+            if (await askYesNo(rl, "\n  Ollama is not installed. Install via Homebrew?", true)) {
+              if (!installOllamaViaBrew()) {
+                console.error("  Failed to install Ollama. Install manually: brew install ollama");
+              }
+            }
           } else {
-            console.log(`  ${label} DB: migrated dim ${m.oldDim} → ${newDim}`);
+            console.log("  Ollama is not installed. Install it: https://ollama.com/download/mac");
           }
         }
-      } catch {
-        // DB not accessible — will be created fresh at server start
+
+        if (isOllamaInstalled() && !isOllamaRunning("http://localhost:11434")) {
+          if (await askYesNo(rl, "\n  Ollama is installed but not running. Start it?", true)) {
+            startOllamaNative();
+            console.log("  Starting Ollama...");
+            if (waitForOllama("http://localhost:11434", 10)) {
+              console.log("  Ollama is ready.");
+            } else {
+              console.log("  Ollama did not start in time. Run manually: ollama serve");
+            }
+          }
+        }
+      } else {
+        hasGpu = await askYesNo(rl, "\nNVIDIA GPU available?", false);
       }
+    }
+
+    const setupCfg: SetupConfig = { neo4jPassword, embeddingProvider, ollamaModel, embeddingDim, hasGpu, ollamaInDocker };
+
+    // Generate files in .semantic-memory/
+    const projectDir = join(process.cwd(), ".semantic-memory");
+    mkdirSync(join(projectDir, "data"), { recursive: true });
+
+    const composePath = join(projectDir, "docker-compose.yml");
+    const envPath = join(projectDir, ".env");
+
+    writeFileSync(composePath, generateDockerCompose(setupCfg));
+    writeFileSync(envPath, generateEnvFile(setupCfg));
+
+    console.log(`\n  Generated:`);
+    console.log(`    ${composePath}`);
+    console.log(`    ${envPath}`);
+
+    // Start containers
+    if (await askYesNo(rl, "\n  Start containers now?", true)) {
+      console.log("\n  Starting containers...");
+      try {
+        execSync(`docker compose -f ${composePath} up -d`, {
+          timeout: 120000,
+          stdio: "inherit",
+        });
+      } catch {
+        console.error("  Failed to start containers. Run manually:");
+        console.error(`    cd ${projectDir} && docker compose up -d`);
+        process.exit(1);
+      }
+
+      // Wait for Neo4j
+      if (!waitForNeo4j(60)) {
+        console.error("  Neo4j did not become healthy in time. Check: docker logs claude-memory-neo4j");
+      } else {
+        console.log("  Neo4j is ready.");
+      }
+
+      // Wait for Ollama (only if ollama embedding provider)
+      if (embeddingProvider === "ollama") {
+        const ollamaUrl = "http://localhost:11434";
+        if (ollamaInDocker) {
+          if (!waitForOllama(ollamaUrl, 15)) {
+            console.error("  Ollama did not start in time. Check: docker logs claude-memory-ollama");
+          } else {
+            console.log("  Ollama is ready.");
+            await pullModelIfNeeded(rl, ollamaUrl, ollamaModel);
+          }
+        } else {
+          // Native Ollama (macOS)
+          if (isOllamaRunning(ollamaUrl)) {
+            console.log("  Ollama is running natively.");
+            await pullModelIfNeeded(rl, ollamaUrl, ollamaModel);
+          } else {
+            console.log("\n  Ollama is not running. Start it with: ollama serve");
+            console.log(`  Then pull the model: ollama pull ${ollamaModel}`);
+          }
+        }
+
+        // Verify model is actually available before writing config
+        if (isOllamaRunning("http://localhost:11434") && !isModelAvailable("http://localhost:11434", ollamaModel)) {
+          console.warn(`\n  Warning: Model '${ollamaModel}' is not available in Ollama.`);
+          console.warn(`  MCP server will fail to start until the model is pulled.`);
+          console.warn(`  Run: curl http://localhost:11434/api/pull -d '{"name":"${ollamaModel}"}'`);
+        }
+      }
+    } else {
+      console.log(`\n  Start later with:`);
+      console.log(`    cd ${projectDir} && docker compose up -d`);
+      if (embeddingProvider === "ollama" && !ollamaInDocker) {
+        console.log(`    ollama serve  (in a separate terminal)`);
+        console.log(`    ollama pull ${ollamaModel}`);
+      }
+    }
+
+    // Trigger words
+    const triggerEnvVars: Record<string, string> = {};
+    await configureTriggerWords(rl, triggerEnvVars);
+
+    // Build env vars for ~/.claude.json
+    const envVars: Record<string, string> = {
+      NEO4J_URI: "bolt://localhost:7687",
+      NEO4J_USER: "neo4j",
+      NEO4J_PASSWORD: neo4jPassword,
+      ...triggerEnvVars,
+    };
+
+    if (embeddingProvider === "ollama") {
+      envVars["EMBEDDING_PROVIDER"] = "ollama";
+      envVars["OLLAMA_URL"] = "http://localhost:11434";
+      envVars["OLLAMA_MODEL"] = ollamaModel;
+      envVars["EMBEDDING_DIM"] = String(embeddingDim);
+    } else {
+      envVars["EMBEDDING_PROVIDER"] = "builtin";
+      envVars["EMBEDDING_DIM"] = String(embeddingDim);
     }
 
     // Step: Share knowledge between projects (auto-promote dual mode)
@@ -673,15 +632,12 @@ export async function runInit(): Promise<void> {
 
     // Always update global mcpServers entry (including re-runs with new settings)
     const mcpServers = (config["mcpServers"] ?? {}) as Record<string, unknown>;
-    const globalEnv: Record<string, string> = { ...result.envVars };
+    const globalEnv: Record<string, string> = { ...envVars };
 
     if (enableDualMode) {
       const globalMemDir = join(homedir(), ".cache", "claude-memory");
       globalEnv["CLAUDE_MEMORY_GLOBAL_DIR"] = globalMemDir;
       globalEnv["CLAUDE_MEMORY_DIR"] = "./.semantic-memory";
-      if (result.envVars["STORAGE_PROVIDER"] === "neo4j") {
-        globalEnv["GLOBAL_STORAGE_PROVIDER"] = "neo4j";
-      }
     }
 
     const globalEntry: Record<string, unknown> = {

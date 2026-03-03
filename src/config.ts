@@ -3,8 +3,6 @@ import { basename, join } from "node:path";
 import { mkdirSync } from "node:fs";
 
 export interface Config {
-  storageProvider: "sqlite" | "neo4j";
-  dbPath: string;
   modelCacheDir: string;
   embeddingProvider: "builtin" | "ollama";
   embeddingModel: string;
@@ -21,8 +19,6 @@ export interface Config {
   triggersDelete?: string;
   dualMode: boolean;
   globalDir: string;
-  globalDbPath: string;
-  globalStorageProvider: "sqlite" | "neo4j";
   projectSlug: string;
 }
 
@@ -36,11 +32,6 @@ export function getConfig(): Config {
     process.env["CLAUDE_MEMORY_DIR"] ?? join(homedir(), ".cache", "claude-memory");
 
   mkdirSync(dataDir, { recursive: true });
-
-  const storageProvider = (process.env["STORAGE_PROVIDER"] ?? "sqlite") as Config["storageProvider"];
-  if (storageProvider !== "sqlite" && storageProvider !== "neo4j") {
-    throw new Error(`Unknown STORAGE_PROVIDER: "${storageProvider}". Supported: sqlite, neo4j`);
-  }
 
   const provider = (process.env["EMBEDDING_PROVIDER"] ?? "builtin") as Config["embeddingProvider"];
   if (provider !== "builtin" && provider !== "ollama") {
@@ -57,14 +48,10 @@ export function getConfig(): Config {
     mkdirSync(globalDir, { recursive: true });
   }
 
-  const globalStorageProvider = (process.env["GLOBAL_STORAGE_PROVIDER"] ?? "sqlite") as Config["globalStorageProvider"];
-
   const projectSlug = process.env["CLAUDE_MEMORY_PROJECT_SLUG"]
     ?? basename(process.cwd());
 
   return {
-    storageProvider,
-    dbPath: process.env["CLAUDE_MEMORY_DB"] ?? join(dataDir, "memory.db"),
     modelCacheDir: process.env["CLAUDE_MEMORY_MODEL_CACHE"] ?? join(dataDir, "models"),
     embeddingProvider: provider,
     embeddingModel: "Xenova/all-MiniLM-L6-v2",
@@ -81,8 +68,6 @@ export function getConfig(): Config {
     triggersDelete: process.env["MEMORY_TRIGGERS_DELETE"],
     dualMode,
     globalDir,
-    globalDbPath: process.env["CLAUDE_MEMORY_GLOBAL_DB"] ?? join(globalDir, "memory.db"),
-    globalStorageProvider,
     projectSlug,
   };
 }

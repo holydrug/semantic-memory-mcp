@@ -51,7 +51,7 @@ export interface CandidateFact {
   scopeCandidate: "global" | "project";
 }
 
-/** Async storage backend interface — implemented by SQLite and Neo4j */
+/** Async storage backend interface — implemented by Neo4j */
 export interface StorageBackend {
   findOrCreateEntity(name: string, embedding: Float32Array): Promise<number>;
   storeFact(params: StoreFact): Promise<number>;
