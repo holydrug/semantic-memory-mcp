@@ -1,3 +1,10 @@
+# [0.9.0](https://github.com/holydrug/claude-memory/compare/v0.8.1...v0.9.0) (2026-03-03)
+
+
+### Features
+
+* add memory_delete tool for deleting facts by ID ([926abe1](https://github.com/holydrug/claude-memory/commit/926abe1664cac2947e8fcdc01c1d0edeb3dac9eb))
+
 ## [0.8.1](https://github.com/holydrug/claude-memory/compare/v0.8.0...v0.8.1) (2026-03-03)
 
 
