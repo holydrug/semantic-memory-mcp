@@ -53,6 +53,25 @@ async function ask(rl: ReturnType<typeof createInterface>, question: string): Pr
   return answer.trim();
 }
 
+/**
+ * Ask a yes/no question with input validation.
+ * @param defaultYes - true for [Y/n] (default yes), false for [y/N] (default no)
+ */
+async function askYesNo(
+  rl: ReturnType<typeof createInterface>,
+  question: string,
+  defaultYes: boolean,
+): Promise<boolean> {
+  const hint = defaultYes ? "[Y/n]" : "[y/N]";
+  for (;;) {
+    const raw = (await rl.question(`${question} ${hint}: `)).trim().toLowerCase();
+    if (raw === "") return defaultYes;
+    if (raw === "y" || raw === "yes") return true;
+    if (raw === "n" || raw === "no") return false;
+    console.log(`  Please answer y or n.`);
+  }
+}
+
 async function choose(
   rl: ReturnType<typeof createInterface>,
   prompt: string,
@@ -195,8 +214,7 @@ async function pullModelIfNeeded(
   model: string,
 ): Promise<void> {
   if (!isModelAvailable(ollamaUrl, model)) {
-    const pullAnswer = await ask(rl, `\n  Model '${model}' not found. Pull it now? [Y/n]: `);
-    if (pullAnswer === "" || pullAnswer.toLowerCase() === "y") {
+    if (await askYesNo(rl, `\n  Model '${model}' not found. Pull it now?`, true)) {
       if (!pullModel(ollamaUrl, model)) {
         console.error(`  Failed to pull '${model}'. Pull manually: ollama pull ${model}`);
       }
@@ -319,8 +337,7 @@ async function configureTriggerWords(
   rl: ReturnType<typeof createInterface>,
   envVars: Record<string, string>,
 ): Promise<void> {
-  const customize = await ask(rl, "\nCustomize trigger words? [y/N]: ");
-  if (customize.toLowerCase() !== "y") return;
+  if (!await askYesNo(rl, "\nCustomize trigger words?", false)) return;
 
   console.log("\n  Add extra trigger words for each tool (comma-separated).");
   console.log("  These are ADDED to the defaults, not replacing them.");
@@ -406,8 +423,7 @@ async function runFullInit(
 
     if (!isOllamaInstalled()) {
       if (isBrewAvailable()) {
-        const installAnswer = await ask(rl, "\n  Ollama is not installed. Install via Homebrew? [Y/n]: ");
-        if (installAnswer === "" || installAnswer.toLowerCase() === "y") {
+        if (await askYesNo(rl, "\n  Ollama is not installed. Install via Homebrew?", true)) {
           if (!installOllamaViaBrew()) {
             console.error("  Failed to install Ollama. Install manually: brew install ollama");
           }
@@ -418,8 +434,7 @@ async function runFullInit(
     }
 
     if (isOllamaInstalled() && !isOllamaRunning("http://localhost:11434")) {
-      const serveAnswer = await ask(rl, "\n  Ollama is installed but not running. Start it? [Y/n]: ");
-      if (serveAnswer === "" || serveAnswer.toLowerCase() === "y") {
+      if (await askYesNo(rl, "\n  Ollama is installed but not running. Start it?", true)) {
         startOllamaNative();
         console.log("  Starting Ollama...");
         if (waitForOllama("http://localhost:11434", 10)) {
@@ -430,8 +445,7 @@ async function runFullInit(
       }
     }
   } else {
-    const gpuAnswer = await ask(rl, "\nNVIDIA GPU available? [y/N]: ");
-    hasGpu = gpuAnswer.toLowerCase() === "y";
+    hasGpu = await askYesNo(rl, "\nNVIDIA GPU available?", false);
   }
 
   const fullCfg: FullModeConfig = { neo4jPassword, ollamaModel, embeddingDim, hasGpu, ollamaInDocker };
@@ -451,8 +465,7 @@ async function runFullInit(
   console.log(`    ${envPath}`);
 
   // Start containers
-  const startAnswer = await ask(rl, "\n  Start containers now? [Y/n]: ");
-  if (startAnswer === "" || startAnswer.toLowerCase() === "y") {
+  if (await askYesNo(rl, "\n  Start containers now?", true)) {
     console.log("\n  Starting containers...");
     try {
       execSync(`docker compose -f ${composePath} up -d`, {
@@ -537,8 +550,7 @@ async function configureOllamaEmbeddings(
     console.log(`\n  Ollama is not running at ${ollamaUrl}.`);
 
     if (isDockerAvailable()) {
-      const startIt = await ask(rl, "  Start Ollama via Docker? [Y/n]: ");
-      if (startIt === "" || startIt.toLowerCase() === "y") {
+      if (await askYesNo(rl, "  Start Ollama via Docker?", true)) {
         const port = new URL(ollamaUrl).port || "11434";
         if (!startOllamaDocker(parseInt(port, 10))) {
           console.error("\n  Failed to start Ollama container. Please start it manually.");
@@ -575,8 +587,7 @@ async function configureOllamaEmbeddings(
 
   // Pull model if needed
   if (isOllamaRunning(ollamaUrl) && !isModelAvailable(ollamaUrl, model)) {
-    const pullAnswer = await ask(rl, `\n  Model '${model}' not found. Pull it now? [Y/n]: `);
-    if (pullAnswer === "" || pullAnswer.toLowerCase() === "y") {
+    if (await askYesNo(rl, `\n  Model '${model}' not found. Pull it now?`, true)) {
       if (!pullModel(ollamaUrl, model)) {
         console.error(`  Failed to pull '${model}'. Pull it manually: ollama pull ${model}`);
       }
@@ -653,8 +664,7 @@ export async function runInit(): Promise<void> {
     }
 
     // Step: Share knowledge between projects (auto-promote dual mode)
-    const shareKnowledge = await ask(rl, "\nShare knowledge between projects? [Y/n]: ");
-    const enableDualMode = shareKnowledge === "" || shareKnowledge.toLowerCase() === "y";
+    const enableDualMode = await askYesNo(rl, "\nShare knowledge between projects?", true);
 
     // Build server entry with pinned version to avoid npx cache issues
     const npxPkg = `semantic-memory-mcp@${PKG_VERSION}`;
