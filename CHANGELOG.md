@@ -1,3 +1,10 @@
+## [0.8.1](https://github.com/holydrug/claude-memory/compare/v0.8.0...v0.8.1) (2026-03-03)
+
+
+### Bug Fixes
+
+* validate yes/no input in init wizard, re-prompt on typos ([02eaf37](https://github.com/holydrug/claude-memory/commit/02eaf37eb581851e74e328bae1235fb7274f6c5a))
+
 # [0.8.0](https://github.com/holydrug/claude-memory/compare/v0.7.1...v0.8.0) (2026-03-02)
 
 
