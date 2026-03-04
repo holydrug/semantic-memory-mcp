@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/holydrug/semantic-memory-mcp/compare/v1.0.1...v1.1.0) (2026-03-04)
+
+
+### Features
+
+* automate dependency setup during init ([9414bde](https://github.com/holydrug/semantic-memory-mcp/commit/9414bde2d7e8878221e8e3e4369989a799975f79))
+
 ## [1.0.1](https://github.com/holydrug/semantic-memory-mcp/compare/v1.0.0...v1.0.1) (2026-03-03)
 
 
