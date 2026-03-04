@@ -1,21 +1,13 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { homedir, platform, arch } from "node:os";
+import { homedir, platform } from "node:os";
 import { execSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { DEFAULT_TRIGGERS, type ToolKey } from "./triggers.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PKG_VERSION = (JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8")) as { version: string }).version;
-
-interface InitResult {
-  envVars: Record<string, string>;
-}
-
-function isMacAppleSilicon(): boolean {
-  return platform() === "darwin" && arch() === "arm64";
-}
 
 function isMac(): boolean {
   return platform() === "darwin";
@@ -115,29 +107,6 @@ function isDockerComposeAvailable(): boolean {
   }
 }
 
-function startOllamaDocker(port: number): boolean {
-  try {
-    const existing = execSync("docker ps -a --filter name=ollama --format '{{.Names}}'", {
-      timeout: 5000,
-      stdio: "pipe",
-    }).toString().trim();
-
-    if (existing === "ollama") {
-      console.log("  Starting existing 'ollama' container...");
-      execSync("docker start ollama", { timeout: 10000, stdio: "pipe" });
-    } else {
-      console.log("  Creating and starting 'ollama' container...");
-      execSync(
-        `docker run -d --name ollama -p ${port}:11434 -v ollama_data:/root/.ollama ollama/ollama`,
-        { timeout: 30000, stdio: "inherit" },
-      );
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function waitForOllama(url: string, maxWaitSec: number): boolean {
   const deadline = Date.now() + maxWaitSec * 1000;
   while (Date.now() < deadline) {
@@ -207,16 +176,11 @@ function startOllamaNative(): boolean {
   }
 }
 
-async function pullModelIfNeeded(
-  rl: ReturnType<typeof createInterface>,
-  ollamaUrl: string,
-  model: string,
-): Promise<void> {
+function ensureModelPulled(ollamaUrl: string, model: string): void {
   if (!isModelAvailable(ollamaUrl, model)) {
-    if (await askYesNo(rl, `\n  Model '${model}' not found. Pull it now?`, true)) {
-      if (!pullModel(ollamaUrl, model)) {
-        console.error(`  Failed to pull '${model}'. Pull manually: ollama pull ${model}`);
-      }
+    console.log(`\n  Model '${model}' not found. Pulling automatically...`);
+    if (!pullModel(ollamaUrl, model)) {
+      console.error(`  Failed to pull '${model}'. Pull manually: ollama pull ${model}`);
     }
   } else {
     console.log(`  Model '${model}' is available.`);
@@ -367,70 +331,6 @@ async function configureTriggerWords(
   }
 }
 
-// ─── Ollama configuration (shared) ──────────────────────────
-
-async function configureOllamaEmbeddings(
-  rl: ReturnType<typeof createInterface>,
-  envVars: Record<string, string>,
-): Promise<void> {
-  const ollamaUrl = (await ask(rl, "\nOllama URL (default: http://localhost:11434): "))
-    || "http://localhost:11434";
-
-  if (!isOllamaRunning(ollamaUrl)) {
-    console.log(`\n  Ollama is not running at ${ollamaUrl}.`);
-
-    if (isDockerAvailable()) {
-      if (await askYesNo(rl, "  Start Ollama via Docker?", true)) {
-        const port = new URL(ollamaUrl).port || "11434";
-        if (!startOllamaDocker(parseInt(port, 10))) {
-          console.error("\n  Failed to start Ollama container. Please start it manually.");
-          return;
-        }
-        console.log("  Waiting for Ollama to be ready...");
-        if (!waitForOllama(ollamaUrl, 15)) {
-          console.error("\n  Ollama did not start in time. Check: docker logs ollama");
-          return;
-        }
-        console.log("  Ollama is ready.");
-      } else {
-        console.log("  Skipping. Make sure Ollama is running before using the MCP server.");
-      }
-    } else {
-      console.log("  Docker is not available either.");
-      console.log("  Install Ollama (https://ollama.com) or Docker, then re-run init.");
-    }
-  } else {
-    console.log(`\n  Ollama is running at ${ollamaUrl}.`);
-  }
-
-  // Choose model
-  const modelNames = Object.keys(OLLAMA_MODELS);
-  const modelDescs = modelNames.map(
-    (m) => {
-      const info = OLLAMA_MODELS[m]!;
-      return `${info.dim}-dim, ${info.size} — ${info.desc}`;
-    },
-  );
-  const modelIdx = await choose(rl, "Embedding model:", modelNames, modelDescs);
-  const model: string = modelNames[modelIdx] ?? modelNames[0]!;
-  const dim: number = OLLAMA_MODELS[model]?.dim ?? 768;
-
-  // Pull model if needed
-  if (isOllamaRunning(ollamaUrl) && !isModelAvailable(ollamaUrl, model)) {
-    if (await askYesNo(rl, `\n  Model '${model}' not found. Pull it now?`, true)) {
-      if (!pullModel(ollamaUrl, model)) {
-        console.error(`  Failed to pull '${model}'. Pull it manually: ollama pull ${model}`);
-      }
-    }
-  } else if (isOllamaRunning(ollamaUrl)) {
-    console.log(`\n  Model '${model}' is available.`);
-  }
-
-  envVars["EMBEDDING_PROVIDER"] = "ollama";
-  envVars["OLLAMA_URL"] = ollamaUrl;
-  envVars["OLLAMA_MODEL"] = model;
-  envVars["EMBEDDING_DIM"] = String(dim);
-}
 
 // ─── Main ───────────────────────────────────────────────────
 
@@ -502,10 +402,9 @@ export async function runInit(): Promise<void> {
 
         if (!isOllamaInstalled()) {
           if (isBrewAvailable()) {
-            if (await askYesNo(rl, "\n  Ollama is not installed. Install via Homebrew?", true)) {
-              if (!installOllamaViaBrew()) {
-                console.error("  Failed to install Ollama. Install manually: brew install ollama");
-              }
+            console.log("\n  Ollama is not installed. Installing via Homebrew...");
+            if (!installOllamaViaBrew()) {
+              console.error("  Failed to install Ollama. Install manually: brew install ollama");
             }
           } else {
             console.log("  Ollama is not installed. Install it: https://ollama.com/download/mac");
@@ -513,14 +412,12 @@ export async function runInit(): Promise<void> {
         }
 
         if (isOllamaInstalled() && !isOllamaRunning("http://localhost:11434")) {
-          if (await askYesNo(rl, "\n  Ollama is installed but not running. Start it?", true)) {
-            startOllamaNative();
-            console.log("  Starting Ollama...");
-            if (waitForOllama("http://localhost:11434", 10)) {
-              console.log("  Ollama is ready.");
-            } else {
-              console.log("  Ollama did not start in time. Run manually: ollama serve");
-            }
+          console.log("\n  Starting Ollama...");
+          startOllamaNative();
+          if (waitForOllama("http://localhost:11434", 10)) {
+            console.log("  Ollama is ready.");
+          } else {
+            console.log("  Ollama did not start in time. Run manually: ollama serve");
           }
         }
       } else {
@@ -544,61 +441,52 @@ export async function runInit(): Promise<void> {
     console.log(`    ${composePath}`);
     console.log(`    ${envPath}`);
 
-    // Start containers
-    if (await askYesNo(rl, "\n  Start containers now?", true)) {
-      console.log("\n  Starting containers...");
-      try {
-        execSync(`docker compose -f ${composePath} up -d`, {
-          timeout: 120000,
-          stdio: "inherit",
-        });
-      } catch {
-        console.error("  Failed to start containers. Run manually:");
-        console.error(`    cd ${projectDir} && docker compose up -d`);
-        process.exit(1);
-      }
+    // Start containers automatically
+    console.log("\n  Starting containers...");
+    try {
+      execSync(`docker compose -f ${composePath} up -d`, {
+        timeout: 120000,
+        stdio: "inherit",
+      });
+    } catch {
+      console.error("  Failed to start containers. Run manually:");
+      console.error(`    cd ${projectDir} && docker compose up -d`);
+      process.exit(1);
+    }
 
-      // Wait for Neo4j
-      if (!waitForNeo4j(60)) {
-        console.error("  Neo4j did not become healthy in time. Check: docker logs claude-memory-neo4j");
-      } else {
-        console.log("  Neo4j is ready.");
-      }
-
-      // Wait for Ollama (only if ollama embedding provider)
-      if (embeddingProvider === "ollama") {
-        const ollamaUrl = "http://localhost:11434";
-        if (ollamaInDocker) {
-          if (!waitForOllama(ollamaUrl, 15)) {
-            console.error("  Ollama did not start in time. Check: docker logs claude-memory-ollama");
-          } else {
-            console.log("  Ollama is ready.");
-            await pullModelIfNeeded(rl, ollamaUrl, ollamaModel);
-          }
-        } else {
-          // Native Ollama (macOS)
-          if (isOllamaRunning(ollamaUrl)) {
-            console.log("  Ollama is running natively.");
-            await pullModelIfNeeded(rl, ollamaUrl, ollamaModel);
-          } else {
-            console.log("\n  Ollama is not running. Start it with: ollama serve");
-            console.log(`  Then pull the model: ollama pull ${ollamaModel}`);
-          }
-        }
-
-        // Verify model is actually available before writing config
-        if (isOllamaRunning("http://localhost:11434") && !isModelAvailable("http://localhost:11434", ollamaModel)) {
-          console.warn(`\n  Warning: Model '${ollamaModel}' is not available in Ollama.`);
-          console.warn(`  MCP server will fail to start until the model is pulled.`);
-          console.warn(`  Run: curl http://localhost:11434/api/pull -d '{"name":"${ollamaModel}"}'`);
-        }
-      }
+    // Wait for Neo4j
+    if (!waitForNeo4j(60)) {
+      console.error("  Neo4j did not become healthy in time. Check: docker logs claude-memory-neo4j");
     } else {
-      console.log(`\n  Start later with:`);
-      console.log(`    cd ${projectDir} && docker compose up -d`);
-      if (embeddingProvider === "ollama" && !ollamaInDocker) {
-        console.log(`    ollama serve  (in a separate terminal)`);
-        console.log(`    ollama pull ${ollamaModel}`);
+      console.log("  Neo4j is ready.");
+    }
+
+    // Wait for Ollama and pull model automatically
+    if (embeddingProvider === "ollama") {
+      const ollamaUrl = "http://localhost:11434";
+      if (ollamaInDocker) {
+        if (!waitForOllama(ollamaUrl, 15)) {
+          console.error("  Ollama did not start in time. Check: docker logs claude-memory-ollama");
+        } else {
+          console.log("  Ollama is ready.");
+          ensureModelPulled(ollamaUrl, ollamaModel);
+        }
+      } else {
+        // Native Ollama (macOS)
+        if (isOllamaRunning(ollamaUrl)) {
+          console.log("  Ollama is running natively.");
+          ensureModelPulled(ollamaUrl, ollamaModel);
+        } else {
+          console.log("\n  Ollama is not running. Start it with: ollama serve");
+          console.log(`  Then pull the model: ollama pull ${ollamaModel}`);
+        }
+      }
+
+      // Verify model is actually available before writing config
+      if (isOllamaRunning("http://localhost:11434") && !isModelAvailable("http://localhost:11434", ollamaModel)) {
+        console.warn(`\n  Warning: Model '${ollamaModel}' is not available in Ollama.`);
+        console.warn(`  MCP server will fail to start until the model is pulled.`);
+        console.warn(`  Run: curl http://localhost:11434/api/pull -d '{"name":"${ollamaModel}"}'`);
       }
     }
 
