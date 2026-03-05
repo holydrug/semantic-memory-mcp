@@ -1,3 +1,10 @@
+## [1.2.2](https://github.com/holydrug/semantic-memory-mcp/compare/v1.2.1...v1.2.2) (2026-03-05)
+
+
+### Bug Fixes
+
+* resolve npm version conflict ([2d6fd3c](https://github.com/holydrug/semantic-memory-mcp/commit/2d6fd3c19f3042ed706b2b4f0ebbf59266698b4d))
+
 ## [1.2.1](https://github.com/holydrug/semantic-memory-mcp/compare/v1.2.0...v1.2.1) (2026-03-05)
 
 
