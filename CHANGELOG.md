@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/holydrug/semantic-memory-mcp/compare/v1.1.0...v1.2.0) (2026-03-05)
+
+
+### Features
+
+* add package exports for library usage ([1b841b1](https://github.com/holydrug/semantic-memory-mcp/commit/1b841b1108206a670b06cb8fc0dd2186d3cee825))
+
 # [1.1.0](https://github.com/holydrug/semantic-memory-mcp/compare/v1.0.1...v1.1.0) (2026-03-04)
 
 
