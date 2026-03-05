@@ -1,3 +1,19 @@
+# [2.0.0](https://github.com/holydrug/semantic-memory-mcp/compare/v1.2.2...v2.0.0) (2026-03-05)
+
+
+### Features
+
+* expose library exports for programmatic usage ([862064a](https://github.com/holydrug/semantic-memory-mcp/commit/862064ae166e7f6f62d65bcec7395c19a97ceda5))
+
+
+### BREAKING CHANGES
+
+* npm versions 1.2.0-1.2.2 are unavailable due to
+registry cooldown. This release (1.3.0) is the first usable version
+with exports.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
 ## [1.2.2](https://github.com/holydrug/semantic-memory-mcp/compare/v1.2.1...v1.2.2) (2026-03-05)
 
 
