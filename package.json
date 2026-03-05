@@ -6,6 +6,14 @@
   "bin": {
     "semantic-memory-mcp": "dist/index.js"
   },
+  "exports": {
+    ".": "./dist/index.js",
+    "./neo4j": "./dist/neo4j.js",
+    "./embeddings": "./dist/embeddings.js",
+    "./config": "./dist/config.js",
+    "./types": "./dist/types.js",
+    "./backend-factory": "./dist/backend-factory.js"
+  },
   "files": [
     "dist"
   ],
