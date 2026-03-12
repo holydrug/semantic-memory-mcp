@@ -51,6 +51,12 @@ export async function runMigrateQdrant(flags: MigrateFlags): Promise<void> {
       console.log("Re-embed mode: will regenerate mismatched embeddings.");
     }
 
+    // Truncate text to avoid exceeding embedding model context length
+    const MAX_EMBED_CHARS = 2000;
+    function truncateForEmbed(text: string): string {
+      return text.length > MAX_EMBED_CHARS ? text.slice(0, MAX_EMBED_CHARS) : text;
+    }
+
     // Stage 1: Upsert
     const session = driver.session();
     try {
@@ -83,7 +89,7 @@ export async function runMigrateQdrant(flags: MigrateFlags): Promise<void> {
             // Re-embed from fact content
             const fact = record.get("fact") as string;
             if (!fact) { skipped++; continue; }
-            const newEmb = await embed(fact);
+            const newEmb = await embed(truncateForEmbed(fact));
             embedding = Array.from(newEmb);
             reEmbedded++;
             // Update Neo4j with new embedding
@@ -100,7 +106,7 @@ export async function runMigrateQdrant(flags: MigrateFlags): Promise<void> {
             // Dimension mismatch — re-embed
             const fact = record.get("fact") as string;
             if (!fact) { skipped++; continue; }
-            const newEmb = await embed(fact);
+            const newEmb = await embed(truncateForEmbed(fact));
             embedding = Array.from(newEmb);
             reEmbedded++;
             // Update Neo4j with new embedding
