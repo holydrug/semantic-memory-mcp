@@ -74,6 +74,7 @@ if (command === "migrate-qdrant") {
   const flags = {
     reconcile: !process.argv.includes("--no-reconcile"),
     recreate: process.argv.includes("--recreate"),
+    reEmbed: process.argv.includes("--re-embed"),
   };
   const { runMigrateQdrant } = await import("./migrate-qdrant.js");
   await runMigrateQdrant(flags);
@@ -97,6 +98,7 @@ Usage:
   semantic-memory-mcp migrate-qdrant [flags] Migrate facts from Neo4j to Qdrant
     --no-reconcile                           Skip orphan cleanup
     --recreate                               Drop and recreate Qdrant collection
+    --re-embed                               Re-generate embeddings with wrong dimensions
   semantic-memory-mcp version                Show version
 
 Environment variables:

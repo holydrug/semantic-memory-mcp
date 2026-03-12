@@ -1,10 +1,12 @@
 import neo4j from "neo4j-driver";
 import { getConfig } from "./config.js";
 import { initQdrant, type QdrantPoint } from "./qdrant.js";
+import type { EmbedFn } from "./types.js";
 
 interface MigrateFlags {
   reconcile: boolean;
   recreate: boolean;
+  reEmbed: boolean;
 }
 
 export async function runMigrateQdrant(flags: MigrateFlags): Promise<void> {
@@ -41,6 +43,14 @@ export async function runMigrateQdrant(flags: MigrateFlags): Promise<void> {
     await qdrant.ensureCollection(config.embeddingDim);
     console.log(`Collection '${config.qdrantCollection}' ready (dim=${config.embeddingDim}).`);
 
+    // Init embeddings if re-embed mode
+    let embed: EmbedFn | undefined;
+    if (flags.reEmbed) {
+      const { initEmbeddings } = await import("./embeddings.js");
+      embed = await initEmbeddings();
+      console.log("Re-embed mode: will regenerate mismatched embeddings.");
+    }
+
     // Stage 1: Upsert
     const session = driver.session();
     try {
@@ -62,15 +72,49 @@ export async function runMigrateQdrant(flags: MigrateFlags): Promise<void> {
       let points: QdrantPoint[] = [];
       let total = 0;
       let skipped = 0;
+      let reEmbedded = 0;
 
       for (const record of result.records) {
         const factId = record.get("factId").toNumber();
-        const embedding = record.get("embedding");
+        let embedding = record.get("embedding");
 
         if (!embedding || !Array.isArray(embedding) || embedding.length === 0) {
-          skipped++;
-          console.error(`[migrate] Skipping fact ${factId}: no embedding`);
-          continue;
+          if (embed) {
+            // Re-embed from fact content
+            const fact = record.get("fact") as string;
+            if (!fact) { skipped++; continue; }
+            const newEmb = await embed(fact);
+            embedding = Array.from(newEmb);
+            reEmbedded++;
+            // Update Neo4j with new embedding
+            await session.run(
+              "MATCH (f:Fact) WHERE id(f) = $id SET f.embedding = $emb",
+              { id: neo4j.int(factId), emb: embedding }
+            );
+          } else {
+            skipped++;
+            continue;
+          }
+        } else if (embedding.length !== config.embeddingDim) {
+          if (embed) {
+            // Dimension mismatch — re-embed
+            const fact = record.get("fact") as string;
+            if (!fact) { skipped++; continue; }
+            const newEmb = await embed(fact);
+            embedding = Array.from(newEmb);
+            reEmbedded++;
+            // Update Neo4j with new embedding
+            await session.run(
+              "MATCH (f:Fact) WHERE id(f) = $id SET f.embedding = $emb",
+              { id: neo4j.int(factId), emb: embedding }
+            );
+          } else {
+            skipped++;
+            if (skipped <= 5) {
+              console.error(`[migrate] Skipping fact ${factId}: dim=${embedding.length}, expected ${config.embeddingDim} (use --re-embed to fix)`);
+            }
+            continue;
+          }
         }
 
         const createdAt = record.get("createdAt");
@@ -96,7 +140,7 @@ export async function runMigrateQdrant(flags: MigrateFlags): Promise<void> {
         if (points.length >= 100) {
           await qdrant.batchUpsert(points);
           total += points.length;
-          console.log(`  Upserted ${total} facts...`);
+          console.log(`  Upserted ${total} facts (${reEmbedded} re-embedded)...`);
           points = [];
         }
       }
@@ -107,7 +151,7 @@ export async function runMigrateQdrant(flags: MigrateFlags): Promise<void> {
         total += points.length;
       }
 
-      console.log(`Migrated ${total} facts to Qdrant (${skipped} skipped: no embedding)`);
+      console.log(`Migrated ${total} facts to Qdrant (${skipped} skipped, ${reEmbedded} re-embedded)`);
 
       // Stage 2: Reconciliation
       if (flags.reconcile) {
