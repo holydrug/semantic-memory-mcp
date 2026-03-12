@@ -3,11 +3,13 @@ import { getConfig } from "./config.js";
 import type {
   StoreFact,
   SearchResult,
+  SearchFilter,
   GraphResult,
   EntityInfo,
   CandidateFact,
   StorageBackend,
 } from "./types.js";
+import type { QdrantBackend, QdrantFilter } from "./qdrant.js";
 
 function vectorIndexQuery(indexName: string, label: string, dim: number): string {
   return `CREATE VECTOR INDEX ${indexName} IF NOT EXISTS
@@ -41,7 +43,7 @@ async function ensureSchema(session: Session, dim: number): Promise<void> {
   );
 }
 
-export function initNeo4j(layer?: string): StorageBackend {
+export function initNeo4j(layer?: string, qdrant?: QdrantBackend): StorageBackend {
   const config = getConfig();
   const driver: Driver = neo4j.driver(
     config.neo4jUri,
@@ -100,7 +102,7 @@ export function initNeo4j(layer?: string): StorageBackend {
          })
          CREATE (subj)-[:SUBJECT_OF]->(f)
          CREATE (f)-[:OBJECT_IS]->(obj)
-         RETURN id(f) AS id`;
+         RETURN id(f) AS id, subj.name AS subjectName, obj.name AS objectName`;
 
       const queryParams: Record<string, unknown> = {
         subjectId: neo4j.int(params.subjectId),
@@ -116,11 +118,64 @@ export function initNeo4j(layer?: string): StorageBackend {
 
       const result = await session.run(query, queryParams);
       const record = result.records[0];
-      return record!.get("id").toNumber();
+      const factId = record!.get("id").toNumber();
+
+      if (qdrant) {
+        try {
+          await qdrant.upsertFact({
+            id: factId,
+            vector: Array.from(params.embedding),
+            payload: {
+              layer: layer || null,
+              subject: record!.get("subjectName") as string,
+              predicate: params.predicate,
+              object: record!.get("objectName") as string,
+              fact: params.content,
+              context: params.context,
+              source: params.source,
+              scope_candidate: params.scopeCandidate || null,
+              created_at: new Date().toISOString(),
+            },
+          });
+        } catch (err) {
+          console.error(
+            "[claude-memory] WARNING: Qdrant upsert failed:",
+            err instanceof Error ? err.message : err
+          );
+        }
+      }
+
+      return factId;
     });
   }
 
   async function searchFacts(embedding: Float32Array, limit: number): Promise<SearchResult[]> {
+    if (qdrant) {
+      try {
+        const results = await qdrant.searchFacts(
+          Array.from(embedding),
+          limit,
+          layer ? { layer } : undefined
+        );
+        return results.map((r) => ({
+          subject: r.payload.subject,
+          predicate: r.payload.predicate,
+          object: r.payload.object,
+          fact: r.payload.fact,
+          context: r.payload.context,
+          source: r.payload.source || "",
+          score: r.score,
+          factId: String(r.id),
+          createdAt: r.payload.created_at,
+        }));
+      } catch (err) {
+        console.error("[claude-memory] WARNING: Qdrant search failed, falling back to Neo4j:",
+          err instanceof Error ? err.message : err);
+        // fallthrough to Neo4j
+      }
+    }
+
+    // Original Neo4j vector search (fallback)
     return withSession(async (session) => {
       // When filtering by layer, request 3x candidates to compensate for post-filter
       const candidateLimit = layer ? limit * 3 : limit;
@@ -154,6 +209,60 @@ export function initNeo4j(layer?: string): StorageBackend {
         factId: String(r.get("factId").toNumber()),
       }));
     });
+  }
+
+  async function searchFactsFiltered(
+    embedding: Float32Array,
+    limit: number,
+    filter: SearchFilter,
+  ): Promise<SearchResult[]> {
+    if (!qdrant) {
+      // Without Qdrant — fallback to regular search (filters ignored)
+      return searchFacts(embedding, limit);
+    }
+
+    try {
+      const qdrantFilter: QdrantFilter = {
+        ...(layer ? { layer } : {}),
+        ...(filter.predicates ? { predicates: filter.predicates } : {}),
+        ...(filter.source ? { source: filter.source } : {}),
+        ...(filter.since ? { since: filter.since } : {}),
+      };
+
+      const results = await qdrant.searchFacts(Array.from(embedding), limit, qdrantFilter);
+
+      let mapped = results.map((r) => ({
+        subject: r.payload.subject,
+        predicate: r.payload.predicate,
+        object: r.payload.object,
+        fact: r.payload.fact,
+        context: r.payload.context,
+        source: r.payload.source || "",
+        score: r.score,
+        factId: String(r.id),
+        createdAt: r.payload.created_at,
+      }));
+
+      // Recency bias (client-side blending)
+      if (filter.recencyBias && filter.recencyBias > 0) {
+        const now = Date.now();
+        mapped = mapped.map((r) => {
+          const created = r.createdAt ? new Date(r.createdAt).getTime() : now;
+          const daysSince = (now - created) / (1000 * 60 * 60 * 24);
+          const recencyScore = Math.max(0, 1 - daysSince / 365);
+          return {
+            ...r,
+            score: r.score * (1 - filter.recencyBias!) + recencyScore * filter.recencyBias!,
+          };
+        }).sort((a, b) => b.score - a.score);
+      }
+
+      return mapped;
+    } catch (err) {
+      console.error("[claude-memory] WARNING: Qdrant filtered search failed, falling back:",
+        err instanceof Error ? err.message : err);
+      return searchFacts(embedding, limit);
+    }
   }
 
   async function graphTraverse(
@@ -293,6 +402,18 @@ export function initNeo4j(layer?: string): StorageBackend {
         { factId: neo4j.int(factId), ...(layer ? { layer } : {}) },
       );
       const deleted = result.records[0]?.get("deleted")?.toNumber() ?? 0;
+
+      if (qdrant && deleted > 0) {
+        try {
+          await qdrant.deleteFact(factId);
+        } catch (err) {
+          console.error(
+            "[claude-memory] WARNING: Qdrant delete failed:",
+            err instanceof Error ? err.message : err
+          );
+        }
+      }
+
       return deleted > 0;
     });
   }
@@ -310,6 +431,7 @@ export function initNeo4j(layer?: string): StorageBackend {
     deleteFact,
     getCandidateFacts,
     updateFactScope,
+    searchFactsFiltered: qdrant ? searchFactsFiltered : undefined,
     close,
   };
 }

@@ -4,6 +4,7 @@ import type {
   DualStorageBackend,
   StoreFact,
   SearchResult,
+  SearchFilter,
   GraphResult,
   EntityInfo,
   CandidateFact,
@@ -52,6 +53,45 @@ export function createDualBackend(
     const seen = new Set<string>();
     const merged: SearchResult[] = [];
 
+    const all = [...projectResults, ...globalResults].sort((a, b) => b.score - a.score);
+    for (const r of all) {
+      const key = `${r.subject}|${r.predicate}|${r.object}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        merged.push(r);
+      }
+    }
+
+    return merged.slice(0, limit);
+  }
+
+  async function searchFactsFiltered(
+    embedding: Float32Array,
+    limit: number,
+    filter: SearchFilter,
+  ): Promise<SearchResult[]> {
+    const [projectResults, globalResults] = await Promise.all([
+      project.searchFactsFiltered
+        ? project.searchFactsFiltered(embedding, limit, filter)
+        : project.searchFacts(embedding, limit),
+      global.searchFactsFiltered
+        ? global.searchFactsFiltered(embedding, limit, filter)
+        : global.searchFacts(embedding, limit),
+    ]);
+
+    // Tag source layer and prefix factId (same logic as searchFacts)
+    for (const r of projectResults) {
+      r.sourceLayer = "project";
+      r.factId = "project:" + r.factId;
+    }
+    for (const r of globalResults) {
+      r.sourceLayer = "global";
+      r.factId = "global:" + r.factId;
+    }
+
+    // Merge and deduplicate (same logic as searchFacts)
+    const seen = new Set<string>();
+    const merged: SearchResult[] = [];
     const all = [...projectResults, ...globalResults].sort((a, b) => b.score - a.score);
     for (const r of all) {
       const key = `${r.subject}|${r.predicate}|${r.object}`;
@@ -150,6 +190,9 @@ export function createDualBackend(
     findOrCreateEntity,
     storeFact,
     searchFacts,
+    searchFactsFiltered: (project.searchFactsFiltered || global.searchFactsFiltered)
+      ? searchFactsFiltered
+      : undefined,
     graphTraverse,
     listEntities,
     deleteFact,

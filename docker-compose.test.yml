@@ -1,0 +1,26 @@
+services:
+  neo4j-test:
+    image: neo4j:5-community
+    container_name: claude-memory-neo4j-test
+    ports:
+      - "17474:7474"
+      - "17687:7687"
+    environment:
+      NEO4J_AUTH: neo4j/test_pass_2024
+      NEO4J_PLUGINS: '["apoc"]'
+    volumes:
+      - neo4j-test-data:/data
+    restart: unless-stopped
+
+  qdrant-test:
+    image: qdrant/qdrant:latest
+    container_name: claude-memory-qdrant-test
+    ports:
+      - "16333:6333"
+    volumes:
+      - qdrant-test-data:/qdrant/storage
+    restart: unless-stopped
+
+volumes:
+  neo4j-test-data:
+  qdrant-test-data:

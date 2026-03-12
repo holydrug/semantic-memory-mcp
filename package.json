@@ -12,7 +12,8 @@
     "./embeddings": "./dist/embeddings.js",
     "./config": "./dist/config.js",
     "./types": "./dist/types.js",
-    "./backend-factory": "./dist/backend-factory.js"
+    "./backend-factory": "./dist/backend-factory.js",
+    "./qdrant": "./dist/qdrant.js"
   },
   "files": [
     "dist"
@@ -25,6 +26,7 @@
   "dependencies": {
     "@huggingface/transformers": "^3.0.0",
     "@modelcontextprotocol/sdk": "^1.7.0",
+    "@qdrant/js-client-rest": "^1.17.0",
     "neo4j-driver": "^6.0.1",
     "zod": "^3.23.0"
   },
@@ -46,6 +48,7 @@
     "semantic",
     "knowledge-graph",
     "neo4j",
+    "qdrant",
     "embeddings",
     "claude-code"
   ],

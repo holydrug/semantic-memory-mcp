@@ -21,6 +21,15 @@ export interface SearchResult {
   score: number;
   factId: string;
   sourceLayer?: "project" | "global";
+  createdAt?: string;  // ISO 8601, populated when Qdrant returns results
+}
+
+/** Filters for Qdrant-powered search */
+export interface SearchFilter {
+  predicates?: string[];    // filter by predicate (keyword match)
+  source?: string;          // filter by source (keyword match)
+  since?: string;           // ISO 8601 date — facts not older than
+  recencyBias?: number;     // 0.0–1.0 — weight of recency vs similarity
 }
 
 export interface GraphResult {
@@ -62,6 +71,11 @@ export interface StorageBackend {
   close(): Promise<void>;
   getCandidateFacts?(scope: "global" | "project"): Promise<CandidateFact[]>;
   updateFactScope?(factId: number, scope: "global" | "project" | null): Promise<void>;
+  searchFactsFiltered?(
+    embedding: Float32Array,
+    limit: number,
+    filter: SearchFilter,
+  ): Promise<SearchResult[]>;
 }
 
 /** Dual-layer backend that exposes per-layer access for auto-routing */

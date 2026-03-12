@@ -20,6 +20,9 @@ export interface Config {
   dualMode: boolean;
   globalDir: string;
   projectSlug: string;
+  qdrantUrl?: string;
+  qdrantApiKey?: string;
+  qdrantCollection: string;
 }
 
 const DEFAULT_DIM = {
@@ -69,5 +72,8 @@ export function getConfig(): Config {
     dualMode,
     globalDir,
     projectSlug,
+    qdrantUrl: process.env["QDRANT_URL"] || undefined,
+    qdrantApiKey: process.env["QDRANT_API_KEY"] || undefined,
+    qdrantCollection: process.env["QDRANT_COLLECTION"] || "semantic_memory_facts",
   };
 }

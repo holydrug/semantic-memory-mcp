@@ -6,7 +6,6 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { getConfig } from "./config.js";
-import { initNeo4j } from "./neo4j.js";
 import { initEmbeddings } from "./embeddings.js";
 import { createBackend } from "./backend-factory.js";
 import { createDualBackend } from "./dual.js";
@@ -41,8 +40,8 @@ if (command === "promote") {
     process.exit(1);
   }
 
-  const projectBackend = createBackend(config, "project");
-  const globalBackend = createBackend(config, "global");
+  const projectBackend = await createBackend(config, "project");
+  const globalBackend = await createBackend(config, "global");
   const embed = await initEmbeddings();
 
   const { runPromote } = await import("./promote.js");
@@ -56,11 +55,11 @@ if (command === "delete") {
   const config = getConfig();
   let backend: StorageBackend;
   if (config.dualMode) {
-    const projectBackend = createBackend(config, "project");
-    const globalBackend = createBackend(config, "global");
+    const projectBackend = await createBackend(config, "project");
+    const globalBackend = await createBackend(config, "global");
     backend = createDualBackend(projectBackend, globalBackend);
   } else {
-    backend = initNeo4j();
+    backend = await createBackend(config, "project");
   }
 
   const embed = await initEmbeddings();
@@ -68,6 +67,16 @@ if (command === "delete") {
   await runDelete(backend, embed, process.argv.slice(3));
 
   await backend.close();
+  process.exit(0);
+}
+
+if (command === "migrate-qdrant") {
+  const flags = {
+    reconcile: !process.argv.includes("--no-reconcile"),
+    recreate: process.argv.includes("--recreate"),
+  };
+  const { runMigrateQdrant } = await import("./migrate-qdrant.js");
+  await runMigrateQdrant(flags);
   process.exit(0);
 }
 
@@ -85,6 +94,9 @@ Usage:
   semantic-memory-mcp promote                Promote project facts to global memory
   semantic-memory-mcp delete <id1> [id2 ..]  Delete facts by ID
   semantic-memory-mcp delete --search "q"    Search and interactively delete facts
+  semantic-memory-mcp migrate-qdrant [flags] Migrate facts from Neo4j to Qdrant
+    --no-reconcile                           Skip orphan cleanup
+    --recreate                               Drop and recreate Qdrant collection
   semantic-memory-mcp version                Show version
 
 Environment variables:
@@ -108,6 +120,10 @@ Environment variables:
   MEMORY_TRIGGERS_DELETE       Extra trigger words for memory_delete (comma-separated)
 
   CLAUDE_MEMORY_GLOBAL_DIR     Global memory directory (enables dual mode)
+
+  QDRANT_URL                   Qdrant REST endpoint (enables Qdrant vector search)
+  QDRANT_API_KEY               Qdrant API key (optional, for Qdrant Cloud)
+  QDRANT_COLLECTION            Qdrant collection name (default: semantic_memory_facts)
 `);
   process.exit(0);
 }
@@ -123,12 +139,11 @@ const config = getConfig();
 let backend: StorageBackend;
 if (config.dualMode) {
   console.error("[claude-memory] Dual mode: project + global layers");
-  const projectBackend = createBackend(config, "project");
-  const globalBackend = createBackend(config, "global");
+  const projectBackend = await createBackend(config, "project");
+  const globalBackend = await createBackend(config, "global");
   backend = createDualBackend(projectBackend, globalBackend);
 } else {
-  console.error("[claude-memory] Using Neo4j storage backend");
-  backend = initNeo4j();
+  backend = await createBackend(config, "project");
 }
 
 const embed = await initEmbeddings();

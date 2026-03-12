@@ -196,6 +196,7 @@ interface SetupConfig {
   embeddingDim: number;
   hasGpu: boolean;
   ollamaInDocker: boolean;
+  enableQdrant: boolean;
 }
 
 function generateDockerCompose(cfg: SetupConfig): string {
@@ -224,6 +225,20 @@ function generateDockerCompose(cfg: SetupConfig): string {
 `;
   }
 
+  let qdrantBlock = "";
+  if (cfg.enableQdrant) {
+    qdrantBlock = `
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: claude-memory-qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - ./data/qdrant:/qdrant/storage
+    restart: unless-stopped
+`;
+  }
+
   return `services:
   neo4j:
     image: neo4j:5-community
@@ -244,7 +259,7 @@ function generateDockerCompose(cfg: SetupConfig): string {
       timeout: 5s
       retries: 5
 
-${ollamaBlock}`;
+${ollamaBlock}${qdrantBlock}`;
 }
 
 function generateEnvFile(cfg: SetupConfig): string {
@@ -425,7 +440,10 @@ export async function runInit(): Promise<void> {
       }
     }
 
-    const setupCfg: SetupConfig = { neo4jPassword, embeddingProvider, ollamaModel, embeddingDim, hasGpu, ollamaInDocker };
+    // Step: Qdrant for advanced vector search
+    const enableQdrant = await askYesNo(rl, "\nEnable Qdrant for advanced vector search?", false);
+
+    const setupCfg: SetupConfig = { neo4jPassword, embeddingProvider, ollamaModel, embeddingDim, hasGpu, ollamaInDocker, enableQdrant };
 
     // Generate files in .semantic-memory/
     const projectDir = join(process.cwd(), ".semantic-memory");
@@ -510,6 +528,10 @@ export async function runInit(): Promise<void> {
     } else {
       envVars["EMBEDDING_PROVIDER"] = "builtin";
       envVars["EMBEDDING_DIM"] = String(embeddingDim);
+    }
+
+    if (enableQdrant) {
+      envVars["QDRANT_URL"] = "http://localhost:6333";
     }
 
     // Step: Share knowledge between projects (auto-promote dual mode)
