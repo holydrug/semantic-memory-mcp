@@ -1,3 +1,10 @@
+# [2.1.0](https://github.com/holydrug/semantic-memory-mcp/compare/v2.0.1...v2.1.0) (2026-03-12)
+
+
+### Features
+
+* add Qdrant vector search integration with dual-write architecture ([211dea5](https://github.com/holydrug/semantic-memory-mcp/commit/211dea54b6027ffbc925387d2de31a931ef3579a))
+
 ## [2.0.1](https://github.com/holydrug/semantic-memory-mcp/compare/v2.0.0...v2.0.1) (2026-03-12)
 
 
