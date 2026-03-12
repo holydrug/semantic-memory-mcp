@@ -1,3 +1,10 @@
+## [2.1.1](https://github.com/holydrug/semantic-memory-mcp/compare/v2.1.0...v2.1.1) (2026-03-12)
+
+
+### Bug Fixes
+
+* handle embedding dimension mismatch in migrate-qdrant ([d8219a3](https://github.com/holydrug/semantic-memory-mcp/commit/d8219a356a808a5763665cf102b1356211740a0f))
+
 # [2.1.0](https://github.com/holydrug/semantic-memory-mcp/compare/v2.0.1...v2.1.0) (2026-03-12)
 
 
