@@ -1,3 +1,10 @@
+## [2.1.3](https://github.com/holydrug/semantic-memory-mcp/compare/v2.1.2...v2.1.3) (2026-03-12)
+
+
+### Bug Fixes
+
+* robust re-embed with try/catch and shorter truncation limit ([1cea19b](https://github.com/holydrug/semantic-memory-mcp/commit/1cea19b65be5f6fa5faabb97060275af93a0a8ae))
+
 ## [2.1.2](https://github.com/holydrug/semantic-memory-mcp/compare/v2.1.1...v2.1.2) (2026-03-12)
 
 
