@@ -1,3 +1,10 @@
+## [2.0.1](https://github.com/holydrug/semantic-memory-mcp/compare/v2.0.0...v2.0.1) (2026-03-12)
+
+
+### Bug Fixes
+
+* re-publish after npm unpublish (version 2.0.0 burned) ([6c327b6](https://github.com/holydrug/semantic-memory-mcp/commit/6c327b6af19dd53737eb0edc47e053dc1703084b))
+
 # [2.0.0](https://github.com/holydrug/semantic-memory-mcp/compare/v1.2.2...v2.0.0) (2026-03-05)
 
 
