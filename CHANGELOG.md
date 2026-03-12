@@ -1,3 +1,10 @@
+## [2.1.2](https://github.com/holydrug/semantic-memory-mcp/compare/v2.1.1...v2.1.2) (2026-03-12)
+
+
+### Bug Fixes
+
+* truncate long facts before re-embedding in migration ([edac0f7](https://github.com/holydrug/semantic-memory-mcp/commit/edac0f76f38721259072d3a54e888c58b73336d3))
+
 ## [2.1.1](https://github.com/holydrug/semantic-memory-mcp/compare/v2.1.0...v2.1.1) (2026-03-12)
 
 
