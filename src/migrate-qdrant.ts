@@ -52,9 +52,24 @@ export async function runMigrateQdrant(flags: MigrateFlags): Promise<void> {
     }
 
     // Truncate text to avoid exceeding embedding model context length
-    const MAX_EMBED_CHARS = 2000;
+    // mxbai-embed-large: 512 tokens ≈ ~500 chars for multilingual text
+    const MAX_EMBED_CHARS = 500;
     function truncateForEmbed(text: string): string {
       return text.length > MAX_EMBED_CHARS ? text.slice(0, MAX_EMBED_CHARS) : text;
+    }
+
+    async function safeReEmbed(
+      factId: number, fact: string, embedFn: EmbedFn,
+    ): Promise<number[] | null> {
+      if (!fact) return null;
+      try {
+        const emb = await embedFn(truncateForEmbed(fact));
+        return Array.from(emb);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[migrate] Re-embed failed for fact ${factId}: ${msg.slice(0, 100)}`);
+        return null;
+      }
     }
 
     // Stage 1: Upsert
@@ -84,30 +99,16 @@ export async function runMigrateQdrant(flags: MigrateFlags): Promise<void> {
         const factId = record.get("factId").toNumber();
         let embedding = record.get("embedding");
 
-        if (!embedding || !Array.isArray(embedding) || embedding.length === 0) {
+        const needsReEmbed =
+          !embedding || !Array.isArray(embedding) || embedding.length === 0 ||
+          embedding.length !== config.embeddingDim;
+
+        if (needsReEmbed) {
           if (embed) {
-            // Re-embed from fact content
             const fact = record.get("fact") as string;
-            if (!fact) { skipped++; continue; }
-            const newEmb = await embed(truncateForEmbed(fact));
-            embedding = Array.from(newEmb);
-            reEmbedded++;
-            // Update Neo4j with new embedding
-            await session.run(
-              "MATCH (f:Fact) WHERE id(f) = $id SET f.embedding = $emb",
-              { id: neo4j.int(factId), emb: embedding }
-            );
-          } else {
-            skipped++;
-            continue;
-          }
-        } else if (embedding.length !== config.embeddingDim) {
-          if (embed) {
-            // Dimension mismatch — re-embed
-            const fact = record.get("fact") as string;
-            if (!fact) { skipped++; continue; }
-            const newEmb = await embed(truncateForEmbed(fact));
-            embedding = Array.from(newEmb);
+            const newEmb = await safeReEmbed(factId, fact, embed);
+            if (!newEmb) { skipped++; continue; }
+            embedding = newEmb;
             reEmbedded++;
             // Update Neo4j with new embedding
             await session.run(
@@ -117,7 +118,8 @@ export async function runMigrateQdrant(flags: MigrateFlags): Promise<void> {
           } else {
             skipped++;
             if (skipped <= 5) {
-              console.error(`[migrate] Skipping fact ${factId}: dim=${embedding.length}, expected ${config.embeddingDim} (use --re-embed to fix)`);
+              const dim = Array.isArray(embedding) ? embedding.length : 0;
+              console.error(`[migrate] Skipping fact ${factId}: dim=${dim}, expected ${config.embeddingDim} (use --re-embed to fix)`);
             }
             continue;
           }
