@@ -187,7 +187,7 @@ export function parseConfigJson(filePath: string): Config {
     maxFactAgeDays: typeof validationRaw["maxFactAgeDays"] === "number" ? validationRaw["maxFactAgeDays"] : VALIDATION_DEFAULTS.maxFactAgeDays,
     maxValidationsPerMinute: typeof validationRaw["maxValidationsPerMinute"] === "number" ? validationRaw["maxValidationsPerMinute"] : VALIDATION_DEFAULTS.maxValidationsPerMinute,
   };
-  void _validation; // will be used in later steps
+  const validation = _validation;
 
   const ingestRaw = (obj["ingest"] && typeof obj["ingest"] === "object")
     ? obj["ingest"] as Record<string, unknown>
@@ -239,16 +239,7 @@ export function parseConfigJson(filePath: string): Config {
     qdrantUrl: qdrantObj["url"] as string,
     qdrantApiKey: undefined,
     qdrantCollection: qdrantObj["collection"] as string,
-    validation: {
-      mode: _validation.mode as "on-store" | "off",
-      claudePath: _validation.claudePath,
-      model: _validation.model,
-      conflictThreshold: _validation.conflictThreshold,
-      sweepCooldownMin: _validation.sweepCooldownMin,
-      sweepBatchSize: _validation.sweepBatchSize,
-      maxFactAgeDays: _validation.maxFactAgeDays,
-      maxValidationsPerMinute: _validation.maxValidationsPerMinute,
-    },
+    validation,
   };
 }
 

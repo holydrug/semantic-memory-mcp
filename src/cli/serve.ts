@@ -11,6 +11,7 @@ import { registerListTool } from "../tools/list.js";
 import { registerDeleteTool } from "../tools/delete.js";
 import { registerValidateTool } from "../tools/validate.js";
 import type { StorageBackend } from "../types.js";
+import { maybeSweepOnStart } from "../sweep.js";
 
 export async function runServe(version: string): Promise<void> {
   const server = new McpServer({
@@ -38,6 +39,9 @@ export async function runServe(version: string): Promise<void> {
   registerListTool(server, backend, config);
   registerDeleteTool(server, backend, config);
   registerValidateTool(server, backend, config);
+
+  // Fire-and-forget sweep on start (does not block serve)
+  void maybeSweepOnStart(config, backend);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

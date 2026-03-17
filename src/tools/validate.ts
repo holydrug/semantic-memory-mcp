@@ -30,7 +30,7 @@ export function registerValidateTool(
 ): void {
   server.tool(
     "memory_validate",
-    buildDescription("validate", config.triggersValidate),
+    buildDescription("validate", undefined),
     {
       subject: z
         .string()
