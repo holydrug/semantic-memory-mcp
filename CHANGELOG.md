@@ -1,3 +1,10 @@
+## [3.0.4](https://github.com/holydrug/semantic-memory-mcp/compare/v3.0.3...v3.0.4) (2026-03-17)
+
+
+### Bug Fixes
+
+* use spawn with stdin.end() for Claude CLI subprocess (prevents hang) ([d3ec661](https://github.com/holydrug/semantic-memory-mcp/commit/d3ec661771ed4876a3de6bee237e3a77a6c2bf04))
+
 ## [3.0.3](https://github.com/holydrug/semantic-memory-mcp/compare/v3.0.2...v3.0.3) (2026-03-17)
 
 
