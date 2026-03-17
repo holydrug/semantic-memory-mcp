@@ -1,3 +1,10 @@
+## [3.0.1](https://github.com/holydrug/semantic-memory-mcp/compare/v3.0.0...v3.0.1) (2026-03-17)
+
+
+### Bug Fixes
+
+* use bash TCP check for Qdrant healthcheck (wget removed in latest image) ([6b2d8bb](https://github.com/holydrug/semantic-memory-mcp/commit/6b2d8bb071ea64880b884b52ef62ce40b40ffa34))
+
 # [3.0.0](https://github.com/holydrug/semantic-memory-mcp/compare/v2.1.3...v3.0.0) (2026-03-17)
 
 

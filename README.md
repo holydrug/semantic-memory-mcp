@@ -5,7 +5,7 @@ Persistent memory for [Claude Code](https://docs.anthropic.com/en/docs/claude-co
 ## Quick start
 
 ```bash
-npx semantic-memory-mcp@3.0.0 init
+npx semantic-memory-mcp@3.0.1 init
 # Restart Claude Code — done!
 ```
 
@@ -33,7 +33,7 @@ By default all facts go into one Neo4j database. With **dual mode** you get two 
 Enable during init (on by default):
 
 ```bash
-npx semantic-memory-mcp@3.0.0 init
+npx semantic-memory-mcp@3.0.1 init
 # → "Share knowledge between projects?" → Y
 ```
 
@@ -65,7 +65,7 @@ There are three ways to connect the MCP server to Claude Code:
 
 ### Global (recommended for personal use)
 
-Added automatically by `npx semantic-memory-mcp@3.0.0 init`. Config lives in `~/.claude.json`:
+Added automatically by `npx semantic-memory-mcp@3.0.1 init`. Config lives in `~/.claude.json`:
 
 ```json
 {
@@ -73,7 +73,7 @@ Added automatically by `npx semantic-memory-mcp@3.0.0 init`. Config lives in `~/
     "semantic-memory": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "semantic-memory-mcp@3.0.0"],
+      "args": ["-y", "semantic-memory-mcp@3.0.1"],
       "env": {
         "NEO4J_URI": "bolt://localhost:7687",
         "NEO4J_USER": "neo4j",
@@ -94,7 +94,7 @@ Create `.mcp.json` in the project root. Committed to the repo so the team shares
     "semantic-memory": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "semantic-memory-mcp@3.0.0"],
+      "args": ["-y", "semantic-memory-mcp@3.0.1"],
       "env": {
         "CLAUDE_MEMORY_DIR": "./.semantic-memory",
         "NEO4J_URI": "bolt://localhost:7687",
@@ -118,7 +118,7 @@ A single global entry in `~/.claude.json` handles all projects — no per-projec
     "semantic-memory": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "semantic-memory-mcp@3.0.0"],
+      "args": ["-y", "semantic-memory-mcp@3.0.1"],
       "env": {
         "CLAUDE_MEMORY_DIR": "./.semantic-memory",
         "CLAUDE_MEMORY_GLOBAL_DIR": "/home/user/.cache/claude-memory",
@@ -189,7 +189,7 @@ Example — adding Chinese and Spanish triggers:
     "semantic-memory": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "semantic-memory-mcp@3.0.0"],
+      "args": ["-y", "semantic-memory-mcp@3.0.1"],
       "env": {
         "NEO4J_URI": "bolt://localhost:7687",
         "NEO4J_USER": "neo4j",
@@ -202,11 +202,11 @@ Example — adding Chinese and Spanish triggers:
 }
 ```
 
-You can also configure triggers interactively during `npx semantic-memory-mcp@3.0.0 init`.
+You can also configure triggers interactively during `npx semantic-memory-mcp@3.0.1 init`.
 
 ## Updating
 
-All commands and configs use a pinned version (`semantic-memory-mcp@3.0.0`). This README is automatically updated on each release, so copying any command from here always gives you the latest version.
+All commands and configs use a pinned version (`semantic-memory-mcp@3.0.1`). This README is automatically updated on each release, so copying any command from here always gives you the latest version.
 
 ## License
 
