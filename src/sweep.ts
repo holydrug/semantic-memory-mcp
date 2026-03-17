@@ -144,7 +144,7 @@ export async function sweepOnce(
     prompt,
     model: config.validation.model,
     maxTurns: 1,
-    timeout: 30_000,
+    timeout: 120_000,
     claudePath: config.validation.claudePath,
   });
 

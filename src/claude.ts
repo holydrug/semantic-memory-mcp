@@ -5,7 +5,7 @@
  * `spawnClaude<T>()`.  Never `process.exit(1)` — always throw.
  */
 
-import { execFile } from 'node:child_process';
+import { spawn } from 'node:child_process';
 
 // ---------------------------------------------------------------------------
 // ClaudeCliError
@@ -79,7 +79,7 @@ export interface SpawnClaudeOpts {
   prompt: string;
   model: string;         // e.g. "sonnet"
   maxTurns?: number;     // default: 1
-  timeout?: number;      // ms, default: 30_000
+  timeout?: number;      // ms, default: 120_000
   claudePath?: string;   // path to claude binary, default: "claude"
 }
 
@@ -95,12 +95,53 @@ type ExecImpl = (args: string[], timeout: number) => Promise<string>;
 
 function defaultExecImpl(args: string[], timeout: number): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile('claude', args, {
-      timeout,
-      maxBuffer: 10 * 1024 * 1024, // 10 MB
-    }, (error, stdout, _stderr) => {
-      if (error) {
-        reject(error);
+    const proc = spawn('claude', args, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    // Close stdin immediately — claude CLI hangs if stdin stays open
+    proc.stdin.end();
+
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      proc.kill();
+      const err = new Error('TIMEOUT');
+      (err as unknown as Record<string, unknown>)['killed'] = true;
+      reject(err);
+    }, timeout);
+
+    proc.stdout.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString();
+      if (stdout.length > 10 * 1024 * 1024) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        proc.kill();
+        reject(new Error('Max buffer exceeded (10 MB)'));
+      }
+    });
+    proc.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+
+    proc.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(err);
+    });
+
+    proc.on('close', (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (code !== 0) {
+        const err = new Error(`claude exited with code ${code}: ${stderr}`);
+        (err as unknown as Record<string, unknown>)['killed'] = false;
+        reject(err);
         return;
       }
       resolve(stdout);
@@ -134,7 +175,7 @@ export async function spawnClaude<T>(opts: SpawnClaudeOpts): Promise<T> {
     '-p', opts.prompt,
   ];
 
-  const timeout = opts.timeout ?? 30_000;
+  const timeout = opts.timeout ?? 120_000;
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < 2; attempt++) {

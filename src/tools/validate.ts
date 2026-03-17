@@ -125,7 +125,7 @@ Respond as JSON: { "decisions": [{ "id": <number>, "verdict": "VALID"|"STALE"|"U
           prompt,
           model: config.validation.model,
           maxTurns: 1,
-          timeout: 30_000,
+          timeout: 120_000,
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
