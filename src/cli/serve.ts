@@ -9,6 +9,7 @@ import { registerSearchTool } from "../tools/search.js";
 import { registerGraphTool } from "../tools/graph.js";
 import { registerListTool } from "../tools/list.js";
 import { registerDeleteTool } from "../tools/delete.js";
+import { registerValidateTool } from "../tools/validate.js";
 import type { StorageBackend } from "../types.js";
 
 export async function runServe(version: string): Promise<void> {
@@ -36,6 +37,7 @@ export async function runServe(version: string): Promise<void> {
   registerGraphTool(server, backend, config);
   registerListTool(server, backend, config);
   registerDeleteTool(server, backend, config);
+  registerValidateTool(server, backend, config);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

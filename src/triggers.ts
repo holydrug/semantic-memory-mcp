@@ -1,4 +1,4 @@
-export type ToolKey = "store" | "search" | "graph" | "list" | "delete";
+export type ToolKey = "store" | "search" | "graph" | "list" | "delete" | "validate";
 
 export const DEFAULT_TRIGGERS: Record<ToolKey, string> = {
   store: "запомни, память, обнови память, сохрани в памяти, remember",
@@ -6,6 +6,7 @@ export const DEFAULT_TRIGGERS: Record<ToolKey, string> = {
   graph: "покажи граф, что связано с, graph, connections",
   list: "что в памяти, покажи всю память, list entities, what's in memory",
   delete: "забудь, удали из памяти, forget, delete memory, remove fact",
+  validate: "проверь факты, валидация памяти, validate facts, review memory, check stale facts",
 };
 
 const BASE_DESCRIPTIONS: Record<ToolKey, string> = {
@@ -14,6 +15,7 @@ const BASE_DESCRIPTIONS: Record<ToolKey, string> = {
   graph: "Explore the knowledge graph around an entity. Returns connected facts and entities.",
   list: "List all entities in the knowledge graph. Optionally filtered by name pattern.",
   delete: "Delete facts from the knowledge graph by ID. Use memory_search or memory_graph to find fact IDs first.",
+  validate: "Validate facts in the knowledge graph using AI review. Reviews oldest unvalidated facts and marks them as VALID, STALE, or UNKNOWN.",
 };
 
 export function buildDescription(toolKey: ToolKey, customTriggers?: string): string {

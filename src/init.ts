@@ -316,6 +316,7 @@ const TRIGGER_ENV_KEYS: Record<ToolKey, string> = {
   graph: "MEMORY_TRIGGERS_GRAPH",
   list: "MEMORY_TRIGGERS_LIST",
   delete: "MEMORY_TRIGGERS_DELETE",
+  validate: "MEMORY_TRIGGERS_VALIDATE",
 };
 
 const TRIGGER_LABELS: Record<ToolKey, string> = {
@@ -324,6 +325,7 @@ const TRIGGER_LABELS: Record<ToolKey, string> = {
   graph: "memory_graph",
   list: "memory_list_entities",
   delete: "memory_delete",
+  validate: "memory_validate",
 };
 
 async function configureTriggerWords(
