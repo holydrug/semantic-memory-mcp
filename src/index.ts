@@ -24,8 +24,9 @@ const VERSION = pkg.version;
 const command = process.argv[2];
 
 if (command === "init") {
-  const { runInit } = await import("./init.js");
-  await runInit();
+  const { runInitV3, parseInitArgs } = await import("./cli/init.js");
+  const initArgs = parseInitArgs(process.argv.slice(3));
+  await runInitV3(initArgs);
   process.exit(0);
 }
 
