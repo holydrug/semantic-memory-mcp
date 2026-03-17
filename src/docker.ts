@@ -130,7 +130,7 @@ export function generateCompose(cfg: ComposeConfig): string {
     volumes:
       - ./data/qdrant:/qdrant/storage
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:6333/healthz"]
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/6333"]
       interval: 10s
       timeout: 5s
       retries: 5

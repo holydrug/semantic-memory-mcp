@@ -128,7 +128,7 @@ function generateV3DockerCompose(cfg: V3ComposeConfig): string {
       - ./data/qdrant:/qdrant/storage
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "sh", "-c", "wget -qO- http://localhost:6333/healthz || exit 1"]
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/6333"]
       interval: 10s
       timeout: 5s
       retries: 5
