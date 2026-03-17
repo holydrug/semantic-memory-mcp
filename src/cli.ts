@@ -184,14 +184,56 @@ export async function runCli(args: string[]): Promise<void> {
     }
 
     case "export": {
+      const config = getConfig();
+      if (!config.qdrantUrl) {
+        console.error("Export requires Qdrant. Set QDRANT_URL environment variable.");
+        process.exit(1);
+      }
+      const { initQdrant } = await import("./qdrant.js");
+      const qdrant = initQdrant(config.qdrantUrl, config.qdrantCollection, config.qdrantApiKey);
+      await qdrant.ensureCollection(config.embeddingDim);
+      const subArgs = args.slice(1);
+      let source: string | undefined;
+      let output: string | undefined;
+      let includeOutdated = false;
+      for (let i = 0; i < subArgs.length; i++) {
+        if (subArgs[i] === "--source" && subArgs[i + 1]) { source = subArgs[++i]; }
+        else if (subArgs[i] === "--output" && subArgs[i + 1]) { output = subArgs[++i]; }
+        else if (subArgs[i] === "--include-outdated") { includeOutdated = true; }
+      }
       const { runExport } = await import("./cli/export.js");
-      await runExport(args.slice(1));
+      await runExport(qdrant, { source, output, includeOutdated });
       process.exit(0);
     }
 
     case "import": {
+      const config = getConfig();
+      const subArgs = args.slice(1);
+      let filePath: string | undefined;
+      let sourceOverride: string | undefined;
+      for (let i = 0; i < subArgs.length; i++) {
+        if (subArgs[i] === "--source-override" && subArgs[i + 1]) { sourceOverride = subArgs[++i]; }
+        else if (!subArgs[i]!.startsWith("--")) { filePath = subArgs[i]; }
+      }
+      if (!filePath) {
+        console.error("Usage: semantic-memory-mcp import <file.jsonl> [--source-override <tag>]");
+        process.exit(1);
+      }
+      let backend: import("./types.js").StorageBackend;
+      if (config.dualMode) {
+        const { createBackend } = await import("./backend-factory.js");
+        const { createDualBackend } = await import("./dual.js");
+        const projectBackend = await createBackend(config, "project");
+        const globalBackend = await createBackend(config, "global");
+        backend = createDualBackend(projectBackend, globalBackend);
+      } else {
+        const { createBackend } = await import("./backend-factory.js");
+        backend = await createBackend(config, "project");
+      }
+      const embed = await initEmbeddings();
       const { runImport } = await import("./cli/import.js");
-      await runImport(args.slice(1));
+      await runImport(filePath, backend, embed, { sourceOverride });
+      await backend.close();
       process.exit(0);
     }
 

@@ -151,8 +151,6 @@ describe("Step 02 — CLI Framework", () => {
 
   describe("placeholder commands", () => {
     for (const [cmd, step] of [
-      ["export", "Step 14"],
-      ["import", "Step 14"],
       ["validate", "Step 7"],
     ]) {
       it(`${cmd} → "Not implemented yet (v3 ${step})"`, () => {
