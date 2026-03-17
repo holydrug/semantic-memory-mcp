@@ -1,3 +1,41 @@
+# [3.0.0](https://github.com/holydrug/semantic-memory-mcp/compare/v2.1.3...v3.0.0) (2026-03-17)
+
+
+* feat!: V3 release ([5a9353d](https://github.com/holydrug/semantic-memory-mcp/commit/5a9353d83e4ff5f1c7e13da9660fd11f37827a97))
+
+
+### Bug Fixes
+
+* remove claudePath from SpawnClaudeOpts call in validate.ts ([89f1edf](https://github.com/holydrug/semantic-memory-mcp/commit/89f1edf9e62cd6350af214bec04a11a380c3a956))
+* resolve final merge conflicts and update placeholder tests ([03d8d23](https://github.com/holydrug/semantic-memory-mcp/commit/03d8d230819a5206d27ca011c9c1cc90de10c326))
+* resolve Wave 3 merge conflicts and type mismatches ([ff1bc6f](https://github.com/holydrug/semantic-memory-mcp/commit/ff1bc6f2dc0f32bfc766f8d39fffa8e29e401132))
+
+
+### Features
+
+* **v3:** step 01 — Config v3 with config.json support ([0856f5a](https://github.com/holydrug/semantic-memory-mcp/commit/0856f5ab4ef55a787f7dcea0cb137183029c7bce))
+* **v3:** step 02+03 — CLI framework + Fact Schema v3 ([ceb5f3f](https://github.com/holydrug/semantic-memory-mcp/commit/ceb5f3fda9fdc2aeed5663ffefb93ee8e2341a89))
+* **v3:** step 04 — Claude CLI subprocess wrapper ([dbd95fe](https://github.com/holydrug/semantic-memory-mcp/commit/dbd95fee7e495f71745bb992e5cc66be19ee2572))
+* **v3:** step 05 — On-Store Validation ([65b668a](https://github.com/holydrug/semantic-memory-mcp/commit/65b668ae0bfe960048a742c8eec96d0220a2c6bf))
+* **v3:** step 06 — On-Read Enrichment ([9d400d0](https://github.com/holydrug/semantic-memory-mcp/commit/9d400d03ba77b048debe53062a81c1d7f7d34163))
+* **v3:** step 07 — Delete Cascade + Validate ([3e32d55](https://github.com/holydrug/semantic-memory-mcp/commit/3e32d55d6ae26f47f41b307dd67a122536ac3770))
+* **v3:** step 08 — Sweep ([70c33f7](https://github.com/holydrug/semantic-memory-mcp/commit/70c33f701bb4548c1b7fb8f44f60b4014e900078))
+* **v3:** step 09 — Hybrid Init ([48eaf5c](https://github.com/holydrug/semantic-memory-mcp/commit/48eaf5cb16f833b7748c65eec375ab96b8d0aec0))
+* **v3:** step 10 — V2 Migration ([c447114](https://github.com/holydrug/semantic-memory-mcp/commit/c447114dbec5eae053b1eac9ca22b1a9b4733f8c))
+* **v3:** step 11 — Auto-scan + Classifier ([6bf44f8](https://github.com/holydrug/semantic-memory-mcp/commit/6bf44f8f0c5c3e14a26a20d918840a7fda9b2b5f))
+* **v3:** step 12 — Extraction + Orchestrator ([0b34827](https://github.com/holydrug/semantic-memory-mcp/commit/0b34827e7f9e1bd7a8c6d091ab7a23d95b3e7563))
+* **v3:** step 13 — memory_ingest + memory_ingest_url + CLI ([cbe8e63](https://github.com/holydrug/semantic-memory-mcp/commit/cbe8e637fb7e4d09b7db9a51bc0812522fb8ec97))
+* **v3:** step 14 — Export / Import ([cb76c07](https://github.com/holydrug/semantic-memory-mcp/commit/cb76c07a836e3ece547640fe6f80ee5399251192))
+
+
+### BREAKING CHANGES
+
+* Config resolution changed to ~/.semantic-memory/config.json with env var fallback.
+StorageBackend interface extended with new required methods.
+Fact schema has new fields: version, confidence, superseded_by, valid_from, valid_until.
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
 ## [2.1.3](https://github.com/holydrug/semantic-memory-mcp/compare/v2.1.2...v2.1.3) (2026-03-12)
 
 
