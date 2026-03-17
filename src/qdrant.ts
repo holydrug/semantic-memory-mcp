@@ -29,6 +29,11 @@ export interface QdrantSearchResult {
   payload: QdrantPoint["payload"];
 }
 
+export interface QdrantScrollPoint {
+  id: number;
+  payload: QdrantPoint["payload"];
+}
+
 export interface QdrantBackend {
   ensureCollection(dim: number): Promise<void>;
   upsertFact(point: QdrantPoint): Promise<void>;
@@ -37,6 +42,7 @@ export interface QdrantBackend {
   deleteFact(neo4jFactId: number): Promise<void>;
   deleteMany(ids: number[]): Promise<void>;
   scrollIds(): Promise<number[]>;
+  scrollFacts(filter?: QdrantFilter): Promise<QdrantScrollPoint[]>;
 }
 
 export function initQdrant(url: string, collection: string, apiKey?: string): QdrantBackend {
@@ -173,6 +179,43 @@ export function initQdrant(url: string, collection: string, apiKey?: string): Qd
     return allIds;
   }
 
+  async function scrollFacts(filter?: QdrantFilter): Promise<QdrantScrollPoint[]> {
+    const allPoints: QdrantScrollPoint[] = [];
+    let offset: number | undefined;
+
+    const must: Array<Record<string, unknown>> = [];
+    if (filter?.layer) {
+      must.push({ key: "layer", match: { value: filter.layer } });
+    }
+    if (filter?.source) {
+      must.push({ key: "source", match: { value: filter.source } });
+    }
+
+    const scrollFilter = must.length > 0 ? { must } : undefined;
+
+    for (;;) {
+      const result = await client.scroll(collection, {
+        limit: 1000,
+        offset,
+        with_payload: true,
+        with_vector: false,
+        filter: scrollFilter,
+      });
+
+      for (const point of result.points) {
+        allPoints.push({
+          id: point.id as number,
+          payload: point.payload as QdrantPoint["payload"],
+        });
+      }
+
+      if (!result.next_page_offset) break;
+      offset = result.next_page_offset as number;
+    }
+
+    return allPoints;
+  }
+
   return {
     ensureCollection,
     upsertFact,
@@ -181,5 +224,6 @@ export function initQdrant(url: string, collection: string, apiKey?: string): Qd
     deleteFact,
     deleteMany,
     scrollIds,
+    scrollFacts,
   };
 }
