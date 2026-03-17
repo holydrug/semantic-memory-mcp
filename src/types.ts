@@ -1,5 +1,30 @@
 export type EmbedFn = (text: string) => Promise<Float32Array>;
 
+/** V3 config.json shape — single config file for all settings */
+export interface ConfigV3 {
+  version: 3;
+  dataDir: string;               // absolute path
+  neo4j: { uri: string; user: string; password: string };
+  qdrant: { url: string; collection: string };
+  embeddings: {
+    provider: "builtin" | "ollama";
+    model: string;
+    dimension: number;
+  };
+  validation: {
+    mode: "on-store" | "off";
+    claudePath: string;
+    model: string;
+    conflictThreshold: number;
+    sweepCooldownMin: number;
+    sweepBatchSize: number;
+    maxFactAgeDays: number;
+    maxValidationsPerMinute: number;
+  };
+  ingest: { batchSize: number; model: string };
+  layers: { mode: "auto" | "off"; globalDir: string | null };
+}
+
 export interface StoreFact {
   subjectId: number;
   predicate: string;
