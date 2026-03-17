@@ -1,5 +1,30 @@
 export type EmbedFn = (text: string) => Promise<Float32Array>;
 
+/** V3 config.json shape — single config file for all settings */
+export interface ConfigV3 {
+  version: 3;
+  dataDir: string;               // absolute path
+  neo4j: { uri: string; user: string; password: string };
+  qdrant: { url: string; collection: string };
+  embeddings: {
+    provider: "builtin" | "ollama";
+    model: string;
+    dimension: number;
+  };
+  validation: {
+    mode: "on-store" | "off";
+    claudePath: string;
+    model: string;
+    conflictThreshold: number;
+    sweepCooldownMin: number;
+    sweepBatchSize: number;
+    maxFactAgeDays: number;
+    maxValidationsPerMinute: number;
+  };
+  ingest: { batchSize: number; model: string };
+  layers: { mode: "auto" | "off"; globalDir: string | null };
+}
+
 export interface StoreFact {
   subjectId: number;
   predicate: string;
@@ -9,6 +34,13 @@ export interface StoreFact {
   source: string;
   embedding: Float32Array;
   scopeCandidate?: "global" | "project" | null;
+  // v3 fields (optional — defaults applied if omitted)
+  version?: string | null;
+  validFrom?: string | null;
+  validUntil?: string | null;
+  supersededBy?: string | null;
+  confidence?: number;
+  lastValidated?: string;
 }
 
 export interface SearchResult {
@@ -22,6 +54,13 @@ export interface SearchResult {
   factId: string;
   sourceLayer?: "project" | "global";
   createdAt?: string;  // ISO 8601, populated when Qdrant returns results
+  // v3 fields (populated with defaults for v2 facts)
+  version?: string | null;
+  validFrom?: string | null;
+  validUntil?: string | null;
+  supersededBy?: string | null;
+  confidence?: number;
+  lastValidated?: string;
 }
 
 /** Filters for Qdrant-powered search */
@@ -41,12 +80,26 @@ export interface GraphResult {
     object: string;
     fact: string;
     factId: string;
+    // v3 fields (optional — populated when available)
+    supersededBy?: string | null;
+    confidence?: number;
+    lastValidated?: string | null;
+    createdAt?: string | null;
   }>;
+}
+
+/** Options for graph traversal */
+export interface GraphTraverseOptions {
+  includeOutdated?: boolean;  // default: false — hide superseded facts
 }
 
 export interface EntityInfo {
   name: string;
   factCount: number;
+  // v3 health score breakdown (optional — populated when available)
+  healthCurrent?: number;
+  healthReview?: number;
+  healthOutdated?: number;
 }
 
 export interface CandidateFact {
@@ -60,12 +113,24 @@ export interface CandidateFact {
   scopeCandidate: "global" | "project";
 }
 
+/** Fact returned for validation queries */
+export interface ValidatableFact {
+  factId: number;
+  subject: string;
+  predicate: string;
+  object: string;
+  content: string;
+  source: string;
+  confidence: number;
+  lastValidated: string | null;
+}
+
 /** Async storage backend interface — implemented by Neo4j */
 export interface StorageBackend {
   findOrCreateEntity(name: string, embedding: Float32Array): Promise<number>;
   storeFact(params: StoreFact): Promise<number>;
   searchFacts(embedding: Float32Array, limit: number): Promise<SearchResult[]>;
-  graphTraverse(entityName: string, depth: number): Promise<GraphResult | null>;
+  graphTraverse(entityName: string, depth: number, options?: GraphTraverseOptions): Promise<GraphResult | null>;
   listEntities(pattern?: string): Promise<EntityInfo[]>;
   deleteFact(factId: number): Promise<boolean>;
   close(): Promise<void>;
@@ -76,6 +141,26 @@ export interface StorageBackend {
     limit: number,
     filter: SearchFilter,
   ): Promise<SearchResult[]>;
+
+  /** Find fact IDs that have superseded_by pointing to the given fact ID */
+  findDependentFacts?(factId: number): Promise<number[]>;
+
+  /** Clear superseded_by on the given fact IDs (make them "current" again) */
+  clearSupersededBy?(factIds: number[]): Promise<number>;
+
+  /** Query facts for validation (oldest unvalidated, optionally filtered) */
+  queryFactsForValidation?(opts: {
+    subject?: string;
+    source?: string;
+    maxAgeDays?: number;
+    limit: number;
+  }): Promise<ValidatableFact[]>;
+
+  /** Update validation state of a fact */
+  updateFactValidation?(factId: number, updates: {
+    confidence?: number;
+    lastValidated?: string;
+  }): Promise<void>;
 }
 
 /** Dual-layer backend that exposes per-layer access for auto-routing */
@@ -116,4 +201,49 @@ export function parseFactId(
     return { error: "invalid numeric ID" };
   }
   return { numericId };
+}
+
+// ---------- v3: Confidence decay ----------
+
+/** Compute how many days have elapsed since a given ISO 8601 date. */
+function daysSince(isoDate: string): number {
+  const then = new Date(isoDate).getTime();
+  const now = Date.now();
+  return Math.max(0, (now - then) / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * Compute the display confidence for a fact, incorporating time decay.
+ *
+ * - If the fact is superseded (`superseded_by` is set), returns 0.0.
+ * - Otherwise, applies exponential decay (half-life = 365 days) based on
+ *   the time since the fact was last validated (or created).
+ * - Returns the minimum of the stored confidence and the decay value.
+ */
+export function computeDisplayConfidence(fact: {
+  confidence: number;
+  last_validated?: string | null;
+  created_at?: string | null;
+  superseded_by?: string | null;
+}): number {
+  if (fact.superseded_by != null) return 0.0;
+
+  const referenceDate = fact.last_validated ?? fact.created_at ?? new Date().toISOString();
+  const ageDays = daysSince(referenceDate);
+  const decay = Math.pow(0.5, ageDays / 365);
+
+  return Math.min(fact.confidence, decay);
+}
+
+/**
+ * Map a display confidence score to a human-readable tag.
+ *
+ * - >= 0.7  -> "✅ Current"
+ * - >= 0.4  -> "🔄 Needs review"
+ * - <  0.4  -> "⚠️ Outdated"
+ */
+export function confidenceTag(displayConfidence: number): string {
+  if (displayConfidence >= 0.7) return "✅ Current";
+  if (displayConfidence >= 0.4) return "🔄 Needs review";
+  return "⚠️ Outdated";
 }
