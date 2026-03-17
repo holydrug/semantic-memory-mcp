@@ -32,7 +32,10 @@ Usage:
     --recreate                               Drop and recreate Qdrant collection
     --re-embed                               Re-generate embeddings with wrong dimensions
   semantic-memory-mcp ingest                 Ingest documentation (v3, not yet implemented)
-  semantic-memory-mcp sweep                  Stale fact review (v3, not yet implemented)
+  semantic-memory-mcp sweep                  One-shot stale fact review (Sonnet)
+  semantic-memory-mcp sweep --subject X      Scope sweep to entity
+  semantic-memory-mcp sweep --source X       Scope sweep to source
+  semantic-memory-mcp sweep --batch-size N   Override batch size
   semantic-memory-mcp export                 Export facts to JSONL (v3, not yet implemented)
   semantic-memory-mcp import <file>          Import facts from JSONL (v3, not yet implemented)
   semantic-memory-mcp validate               Manual full sweep (v3, not yet implemented)
@@ -174,7 +177,8 @@ export async function runCli(args: string[]): Promise<void> {
     }
 
     case "sweep": {
-      console.error("Not implemented yet (v3 Step 8)");
+      const { runSweep } = await import("./cli/sweep.js");
+      await runSweep(args.slice(1));
       process.exit(0);
     }
 

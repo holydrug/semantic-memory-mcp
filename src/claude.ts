@@ -80,6 +80,7 @@ export interface SpawnClaudeOpts {
   model: string;         // e.g. "sonnet"
   maxTurns?: number;     // default: 1
   timeout?: number;      // ms, default: 30_000
+  claudePath?: string;   // path to claude binary, default: "claude"
 }
 
 function sleep(ms: number): Promise<void> {
