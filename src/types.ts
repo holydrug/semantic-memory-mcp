@@ -60,6 +60,18 @@ export interface CandidateFact {
   scopeCandidate: "global" | "project";
 }
 
+/** Fact returned for validation queries */
+export interface ValidatableFact {
+  factId: number;
+  subject: string;
+  predicate: string;
+  object: string;
+  content: string;
+  source: string;
+  confidence: number;
+  lastValidated: string | null;
+}
+
 /** Async storage backend interface — implemented by Neo4j */
 export interface StorageBackend {
   findOrCreateEntity(name: string, embedding: Float32Array): Promise<number>;
@@ -76,6 +88,26 @@ export interface StorageBackend {
     limit: number,
     filter: SearchFilter,
   ): Promise<SearchResult[]>;
+
+  /** Find fact IDs that have superseded_by pointing to the given fact ID */
+  findDependentFacts?(factId: number): Promise<number[]>;
+
+  /** Clear superseded_by on the given fact IDs (make them "current" again) */
+  clearSupersededBy?(factIds: number[]): Promise<number>;
+
+  /** Query facts for validation (oldest unvalidated, optionally filtered) */
+  queryFactsForValidation?(opts: {
+    subject?: string;
+    source?: string;
+    maxAgeDays?: number;
+    limit: number;
+  }): Promise<ValidatableFact[]>;
+
+  /** Update validation state of a fact */
+  updateFactValidation?(factId: number, updates: {
+    confidence?: number;
+    lastValidated?: string;
+  }): Promise<void>;
 }
 
 /** Dual-layer backend that exposes per-layer access for auto-routing */

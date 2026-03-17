@@ -7,6 +7,7 @@ import type {
   GraphResult,
   EntityInfo,
   CandidateFact,
+  ValidatableFact,
   StorageBackend,
 } from "./types.js";
 import type { QdrantBackend, QdrantFilter } from "./qdrant.js";
@@ -418,6 +419,122 @@ export function initNeo4j(layer?: string, qdrant?: QdrantBackend): StorageBacken
     });
   }
 
+  async function findDependentFacts(factId: number): Promise<number[]> {
+    return withSession(async (session) => {
+      const layerFilter = layer ? " AND f.layer = $layer" : "";
+      const result = await session.run(
+        `MATCH (f:Fact) WHERE f.superseded_by = $factId${layerFilter}
+         RETURN id(f) AS depId`,
+        { factId: neo4j.int(factId), ...(layer ? { layer } : {}) },
+      );
+      return result.records.map((r) => r.get("depId").toNumber());
+    });
+  }
+
+  async function clearSupersededBy(factIds: number[]): Promise<number> {
+    if (factIds.length === 0) return 0;
+    return withSession(async (session) => {
+      const result = await session.run(
+        `UNWIND $factIds AS fid
+         MATCH (f:Fact) WHERE id(f) = fid
+         SET f.superseded_by = null
+         RETURN count(f) AS cleared`,
+        { factIds: factIds.map((id) => neo4j.int(id)) },
+      );
+      return result.records[0]?.get("cleared")?.toNumber() ?? 0;
+    });
+  }
+
+  async function queryFactsForValidation(opts: {
+    subject?: string;
+    source?: string;
+    maxAgeDays?: number;
+    limit: number;
+  }): Promise<ValidatableFact[]> {
+    return withSession(async (session) => {
+      const conditions: string[] = [];
+      const params: Record<string, unknown> = {};
+
+      if (layer) {
+        conditions.push("f.layer = $layer");
+        params.layer = layer;
+      }
+
+      // Only current facts (not superseded)
+      conditions.push("(f.superseded_by IS NULL)");
+
+      if (opts.subject) {
+        conditions.push("toLower(subj.name) CONTAINS toLower($subject)");
+        params.subject = opts.subject;
+      }
+
+      if (opts.source) {
+        conditions.push("f.source = $source");
+        params.source = opts.source;
+      }
+
+      if (opts.maxAgeDays !== undefined) {
+        conditions.push(
+          "(f.last_validated IS NULL OR f.last_validated < datetime() - duration({days: $maxAgeDays}))"
+        );
+        params.maxAgeDays = neo4j.int(opts.maxAgeDays);
+      }
+
+      const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+      params.limit = neo4j.int(opts.limit);
+
+      const result = await session.run(
+        `MATCH (subj:Entity)-[:SUBJECT_OF]->(f:Fact)-[:OBJECT_IS]->(obj:Entity)
+         ${where}
+         RETURN id(f) AS factId, subj.name AS subject, f.predicate AS predicate,
+                obj.name AS object, f.content AS content, f.source AS source,
+                coalesce(f.confidence, 1.0) AS confidence,
+                toString(f.last_validated) AS lastValidated
+         ORDER BY f.last_validated ASC NULLS FIRST
+         LIMIT $limit`,
+        params,
+      );
+
+      return result.records.map((r) => ({
+        factId: r.get("factId").toNumber(),
+        subject: r.get("subject") as string,
+        predicate: r.get("predicate") as string,
+        object: r.get("object") as string,
+        content: r.get("content") as string,
+        source: (r.get("source") as string) || "",
+        confidence: r.get("confidence") as number,
+        lastValidated: r.get("lastValidated") as string | null,
+      }));
+    });
+  }
+
+  async function updateFactValidation(
+    factId: number,
+    updates: { confidence?: number; lastValidated?: string },
+  ): Promise<void> {
+    await withSession(async (session) => {
+      const setClauses: string[] = [];
+      const params: Record<string, unknown> = { factId: neo4j.int(factId) };
+
+      if (updates.confidence !== undefined) {
+        setClauses.push("f.confidence = $confidence");
+        params.confidence = updates.confidence;
+      }
+      if (updates.lastValidated !== undefined) {
+        setClauses.push("f.last_validated = datetime($lastValidated)");
+        params.lastValidated = updates.lastValidated;
+      }
+
+      if (setClauses.length === 0) return;
+
+      await session.run(
+        `MATCH (f:Fact) WHERE id(f) = $factId
+         SET ${setClauses.join(", ")}`,
+        params,
+      );
+    });
+  }
+
   async function close(): Promise<void> {
     await driver.close();
   }
@@ -432,6 +549,10 @@ export function initNeo4j(layer?: string, qdrant?: QdrantBackend): StorageBacken
     getCandidateFacts,
     updateFactScope,
     searchFactsFiltered: qdrant ? searchFactsFiltered : undefined,
+    findDependentFacts,
+    clearSupersededBy,
+    queryFactsForValidation,
+    updateFactValidation,
     close,
   };
 }
