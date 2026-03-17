@@ -13,6 +13,13 @@ export interface QdrantPoint {
     source: string;
     scope_candidate: string | null;
     created_at: string;    // ISO 8601
+    // v3 fields
+    version: string | null;
+    valid_from: string | null;
+    valid_until: string | null;
+    superseded_by: string | null;
+    confidence: number;
+    last_validated: string;
   };
 }
 
@@ -37,6 +44,34 @@ export interface QdrantBackend {
   deleteFact(neo4jFactId: number): Promise<void>;
   deleteMany(ids: number[]): Promise<void>;
   scrollIds(): Promise<number[]>;
+}
+
+/**
+ * Normalize a Qdrant payload by filling in v3 defaults for v2 data
+ * that lacks the new fields.
+ */
+export function normalizePayload(
+  raw: Record<string, unknown>,
+): QdrantPoint["payload"] {
+  const createdAt = (raw["created_at"] as string | undefined) ?? new Date().toISOString();
+  return {
+    layer: (raw["layer"] as string | null) ?? null,
+    subject: (raw["subject"] as string) ?? "",
+    predicate: (raw["predicate"] as string) ?? "",
+    object: (raw["object"] as string) ?? "",
+    fact: (raw["fact"] as string) ?? "",
+    context: (raw["context"] as string) ?? "",
+    source: (raw["source"] as string) ?? "",
+    scope_candidate: (raw["scope_candidate"] as string | null) ?? null,
+    created_at: createdAt,
+    // v3 defaults for v2 data
+    version: (raw["version"] as string | null) ?? null,
+    valid_from: (raw["valid_from"] as string | null) ?? null,
+    valid_until: (raw["valid_until"] as string | null) ?? null,
+    superseded_by: (raw["superseded_by"] as string | null) ?? null,
+    confidence: typeof raw["confidence"] === "number" ? raw["confidence"] : 1.0,
+    last_validated: (raw["last_validated"] as string | undefined) ?? createdAt,
+  };
 }
 
 export function initQdrant(url: string, collection: string, apiKey?: string): QdrantBackend {
@@ -69,11 +104,17 @@ export function initQdrant(url: string, collection: string, apiKey?: string): Qd
     }
 
     // Create payload indexes (idempotent)
-    const indexes: Array<{ field: string; type: "keyword" | "datetime" }> = [
+    const indexes: Array<{ field: string; type: "keyword" | "datetime" | "float" }> = [
       { field: "layer", type: "keyword" },
       { field: "predicate", type: "keyword" },
       { field: "source", type: "keyword" },
       { field: "created_at", type: "datetime" },
+      // v3 indexes
+      { field: "confidence", type: "float" },
+      { field: "last_validated", type: "keyword" },
+      { field: "superseded_by", type: "keyword" },
+      { field: "version", type: "keyword" },
+      { field: "valid_until", type: "keyword" },
     ];
     for (const { field, type } of indexes) {
       try {
@@ -133,7 +174,7 @@ export function initQdrant(url: string, collection: string, apiKey?: string): Qd
     return results.map((r) => ({
       id: r.id as number,
       score: r.score,
-      payload: r.payload as QdrantPoint["payload"],
+      payload: normalizePayload(r.payload as Record<string, unknown>),
     }));
   }
 

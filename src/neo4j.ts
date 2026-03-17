@@ -88,6 +88,7 @@ export function initNeo4j(layer?: string, qdrant?: QdrantBackend): StorageBacken
 
   async function storeFact(params: StoreFact): Promise<number> {
     return withSession(async (session) => {
+      const now = new Date().toISOString();
       const layerProp = layer ? ", layer: $layer" : "";
       const query = `MATCH (subj:Entity) WHERE id(subj) = $subjectId
          MATCH (obj:Entity) WHERE id(obj) = $objectId
@@ -98,7 +99,13 @@ export function initNeo4j(layer?: string, qdrant?: QdrantBackend): StorageBacken
            source: $source,
            scope_candidate: $scopeCandidate,
            embedding: $embedding,
-           created_at: datetime()${layerProp}
+           created_at: datetime(),
+           version: $version,
+           valid_from: $validFrom,
+           valid_until: $validUntil,
+           superseded_by: $supersededBy,
+           confidence: $confidence,
+           last_validated: $lastValidated${layerProp}
          })
          CREATE (subj)-[:SUBJECT_OF]->(f)
          CREATE (f)-[:OBJECT_IS]->(obj)
@@ -113,6 +120,13 @@ export function initNeo4j(layer?: string, qdrant?: QdrantBackend): StorageBacken
         source: params.source,
         scopeCandidate: params.scopeCandidate ?? null,
         embedding: Array.from(params.embedding),
+        // v3 fields with defaults
+        version: params.version ?? null,
+        validFrom: params.validFrom ?? null,
+        validUntil: params.validUntil ?? null,
+        supersededBy: params.supersededBy ?? null,
+        confidence: params.confidence ?? 1.0,
+        lastValidated: params.lastValidated ?? now,
       };
       if (layer) queryParams.layer = layer;
 
@@ -134,7 +148,14 @@ export function initNeo4j(layer?: string, qdrant?: QdrantBackend): StorageBacken
               context: params.context,
               source: params.source,
               scope_candidate: params.scopeCandidate || null,
-              created_at: new Date().toISOString(),
+              created_at: now,
+              // v3 fields
+              version: params.version ?? null,
+              valid_from: params.validFrom ?? null,
+              valid_until: params.validUntil ?? null,
+              superseded_by: params.supersededBy ?? null,
+              confidence: params.confidence ?? 1.0,
+              last_validated: params.lastValidated ?? now,
             },
           });
         } catch (err) {
@@ -167,6 +188,13 @@ export function initNeo4j(layer?: string, qdrant?: QdrantBackend): StorageBacken
           score: r.score,
           factId: String(r.id),
           createdAt: r.payload.created_at,
+          // v3 fields (normalizePayload already applied defaults)
+          version: r.payload.version,
+          validFrom: r.payload.valid_from,
+          validUntil: r.payload.valid_until,
+          supersededBy: r.payload.superseded_by,
+          confidence: r.payload.confidence,
+          lastValidated: r.payload.last_validated,
         }));
       } catch (err) {
         console.error("[claude-memory] WARNING: Qdrant search failed, falling back to Neo4j:",
@@ -241,6 +269,13 @@ export function initNeo4j(layer?: string, qdrant?: QdrantBackend): StorageBacken
         score: r.score,
         factId: String(r.id),
         createdAt: r.payload.created_at,
+        // v3 fields (normalizePayload already applied defaults)
+        version: r.payload.version,
+        validFrom: r.payload.valid_from,
+        validUntil: r.payload.valid_until,
+        supersededBy: r.payload.superseded_by,
+        confidence: r.payload.confidence,
+        lastValidated: r.payload.last_validated,
       }));
 
       // Recency bias (client-side blending)
