@@ -2,6 +2,17 @@ import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { mkdirSync } from "node:fs";
 
+export interface ValidationConfig {
+  mode: "on-store" | "off";
+  claudePath: string;
+  model: string;
+  conflictThreshold: number;
+  sweepCooldownMin: number;
+  sweepBatchSize: number;
+  maxFactAgeDays: number;
+  maxValidationsPerMinute: number;
+}
+
 export interface Config {
   modelCacheDir: string;
   embeddingProvider: "builtin" | "ollama";
@@ -23,6 +34,7 @@ export interface Config {
   qdrantUrl?: string;
   qdrantApiKey?: string;
   qdrantCollection: string;
+  validation: ValidationConfig;
 }
 
 const DEFAULT_DIM = {
@@ -75,5 +87,15 @@ export function getConfig(): Config {
     qdrantUrl: process.env["QDRANT_URL"] || undefined,
     qdrantApiKey: process.env["QDRANT_API_KEY"] || undefined,
     qdrantCollection: process.env["QDRANT_COLLECTION"] || "semantic_memory_facts",
+    validation: {
+      mode: (process.env["VALIDATION_MODE"] as "on-store" | "off") || "off",
+      claudePath: process.env["CLAUDE_PATH"] || "claude",
+      model: process.env["VALIDATION_MODEL"] || "sonnet",
+      conflictThreshold: parseFloat(process.env["VALIDATION_CONFLICT_THRESHOLD"] || "0.85"),
+      sweepCooldownMin: parseInt(process.env["VALIDATION_SWEEP_COOLDOWN_MIN"] || "30", 10),
+      sweepBatchSize: parseInt(process.env["VALIDATION_SWEEP_BATCH_SIZE"] || "20", 10),
+      maxFactAgeDays: parseInt(process.env["VALIDATION_MAX_FACT_AGE_DAYS"] || "90", 10),
+      maxValidationsPerMinute: parseInt(process.env["VALIDATION_MAX_PER_MINUTE"] || "10", 10),
+    },
   };
 }
