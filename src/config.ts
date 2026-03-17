@@ -37,6 +37,7 @@ export interface Config {
   qdrantApiKey?: string;
   qdrantCollection: string;
   validation: ValidationConfig;
+  ingest: { batchSize: number; model: string };
 }
 
 const DEFAULT_DIM = {
@@ -196,7 +197,7 @@ export function parseConfigJson(filePath: string): Config {
     batchSize: typeof ingestRaw["batchSize"] === "number" ? ingestRaw["batchSize"] : INGEST_DEFAULTS.batchSize,
     model: typeof ingestRaw["model"] === "string" ? ingestRaw["model"] : INGEST_DEFAULTS.model,
   };
-  void _ingest; // will be used in later steps
+  const ingest = _ingest;
 
   const layersRaw = (obj["layers"] && typeof obj["layers"] === "object")
     ? obj["layers"] as Record<string, unknown>
@@ -240,6 +241,7 @@ export function parseConfigJson(filePath: string): Config {
     qdrantApiKey: undefined,
     qdrantCollection: qdrantObj["collection"] as string,
     validation,
+    ingest,
   };
 }
 
@@ -302,6 +304,10 @@ export function getConfigFromEnv(): Config {
       sweepBatchSize: parseInt(process.env["VALIDATION_SWEEP_BATCH_SIZE"] || "20", 10),
       maxFactAgeDays: parseInt(process.env["VALIDATION_MAX_FACT_AGE_DAYS"] || "90", 10),
       maxValidationsPerMinute: parseInt(process.env["VALIDATION_MAX_PER_MINUTE"] || "10", 10),
+    },
+    ingest: {
+      batchSize: parseInt(process.env["INGEST_BATCH_SIZE"] || "5", 10),
+      model: process.env["INGEST_MODEL"] || "sonnet",
     },
   };
 }
