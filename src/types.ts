@@ -80,12 +80,26 @@ export interface GraphResult {
     object: string;
     fact: string;
     factId: string;
+    // v3 fields (optional — populated when available)
+    supersededBy?: string | null;
+    confidence?: number;
+    lastValidated?: string | null;
+    createdAt?: string | null;
   }>;
+}
+
+/** Options for graph traversal */
+export interface GraphTraverseOptions {
+  includeOutdated?: boolean;  // default: false — hide superseded facts
 }
 
 export interface EntityInfo {
   name: string;
   factCount: number;
+  // v3 health score breakdown (optional — populated when available)
+  healthCurrent?: number;
+  healthReview?: number;
+  healthOutdated?: number;
 }
 
 export interface CandidateFact {
@@ -104,7 +118,7 @@ export interface StorageBackend {
   findOrCreateEntity(name: string, embedding: Float32Array): Promise<number>;
   storeFact(params: StoreFact): Promise<number>;
   searchFacts(embedding: Float32Array, limit: number): Promise<SearchResult[]>;
-  graphTraverse(entityName: string, depth: number): Promise<GraphResult | null>;
+  graphTraverse(entityName: string, depth: number, options?: GraphTraverseOptions): Promise<GraphResult | null>;
   listEntities(pattern?: string): Promise<EntityInfo[]>;
   deleteFact(factId: number): Promise<boolean>;
   close(): Promise<void>;

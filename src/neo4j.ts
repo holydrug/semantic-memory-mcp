@@ -5,10 +5,12 @@ import type {
   SearchResult,
   SearchFilter,
   GraphResult,
+  GraphTraverseOptions,
   EntityInfo,
   CandidateFact,
   StorageBackend,
 } from "./types.js";
+import { computeDisplayConfidence, confidenceTag } from "./types.js";
 import type { QdrantBackend, QdrantFilter } from "./qdrant.js";
 
 function vectorIndexQuery(indexName: string, label: string, dim: number): string {
@@ -303,8 +305,11 @@ export function initNeo4j(layer?: string, qdrant?: QdrantBackend): StorageBacken
   async function graphTraverse(
     entityName: string,
     depth: number,
+    options?: GraphTraverseOptions,
   ): Promise<GraphResult | null> {
     return withSession(async (session) => {
+      const includeOutdated = options?.includeOutdated ?? false;
+
       // Fuzzy find entity
       const layerFilter = layer ? " AND e.layer = $layer" : "";
       const matchQuery = `MATCH (e:Entity)
@@ -321,10 +326,13 @@ export function initNeo4j(layer?: string, qdrant?: QdrantBackend): StorageBacken
       if (matchResult.records.length === 0) return null;
       const matchedName = matchResult.records[0]!.get("name") as string;
 
-      // Traverse graph
+      // Traverse graph — optionally filter superseded facts
       const startFilter = layer ? "{name: $name, layer: $layer}" : "{name: $name}";
+      const supersededFilter = includeOutdated
+        ? ""
+        : `\n         AND ALL(node IN nodes(path) WHERE CASE WHEN node:Fact THEN node.superseded_by IS NULL ELSE true END)`;
       const traverseQuery = `MATCH path = (start:Entity ${startFilter})-[:SUBJECT_OF|OBJECT_IS*1..${depth * 2}]-(connected)
-         WHERE connected:Entity OR connected:Fact
+         WHERE (connected:Entity OR connected:Fact)${supersededFilter}
          WITH connected, length(path) AS dist
          ORDER BY dist
          WITH collect(DISTINCT connected) AS nodes
@@ -332,7 +340,9 @@ export function initNeo4j(layer?: string, qdrant?: QdrantBackend): StorageBacken
          OPTIONAL MATCH (s:Entity)-[:SUBJECT_OF]->(n)-[:OBJECT_IS]->(o:Entity) WHERE n:Fact
          RETURN labels(n)[0] AS type, n.name AS entity_name,
                 s.name AS subject, n.predicate AS predicate, o.name AS object,
-                n.content AS fact, id(n) AS factId`;
+                n.content AS fact, id(n) AS factId,
+                n.superseded_by AS superseded_by, n.confidence AS confidence,
+                n.last_validated AS last_validated, n.created_at AS created_at`;
 
       const traverseResult = await session.run(traverseQuery, { name: matchedName, ...(layer ? { layer } : {}) });
 
@@ -347,12 +357,23 @@ export function initNeo4j(layer?: string, qdrant?: QdrantBackend): StorageBacken
         } else if (type === "Fact") {
           const subject = r.get("subject") as string | null;
           if (subject) {
+            const supersededBy = r.get("superseded_by") as string | null;
+            const rawConfidence = r.get("confidence");
+            const confidence = typeof rawConfidence === "number" ? rawConfidence : 1.0;
+            const lastValidated = r.get("last_validated") as string | null;
+            const createdAtRaw = r.get("created_at");
+            const createdAt = createdAtRaw != null ? String(createdAtRaw) : null;
+
             facts.push({
               subject,
               predicate: r.get("predicate") as string,
               object: r.get("object") as string,
               fact: r.get("fact") as string,
               factId: String(r.get("factId").toNumber()),
+              supersededBy,
+              confidence,
+              lastValidated,
+              createdAt,
             });
           }
         }
@@ -366,16 +387,29 @@ export function initNeo4j(layer?: string, qdrant?: QdrantBackend): StorageBacken
     return withSession(async (session) => {
       const layerFilter = layer ? " AND e.layer = $layer" : "";
 
+      // Query returns per-fact v3 fields for health score computation
       const query = pattern
         ? `MATCH (e:Entity)
            WHERE toLower(e.name) CONTAINS toLower($pattern)${layerFilter}
            OPTIONAL MATCH (e)-[:SUBJECT_OF]->(f:Fact)
-           RETURN e.name AS name, count(f) AS fact_count
+           RETURN e.name AS name,
+                  collect({
+                    confidence: f.confidence,
+                    last_validated: f.last_validated,
+                    created_at: f.created_at,
+                    superseded_by: f.superseded_by
+                  }) AS facts_data
            ORDER BY e.name`
         : `MATCH (e:Entity)
            WHERE 1=1${layerFilter}
            OPTIONAL MATCH (e)-[:SUBJECT_OF]->(f:Fact)
-           RETURN e.name AS name, count(f) AS fact_count
+           RETURN e.name AS name,
+                  collect({
+                    confidence: f.confidence,
+                    last_validated: f.last_validated,
+                    created_at: f.created_at,
+                    superseded_by: f.superseded_by
+                  }) AS facts_data
            ORDER BY e.name`;
 
       const params: Record<string, unknown> = {};
@@ -384,10 +418,45 @@ export function initNeo4j(layer?: string, qdrant?: QdrantBackend): StorageBacken
 
       const result = await session.run(query, params);
 
-      return result.records.map((r) => ({
-        name: r.get("name") as string,
-        factCount: (r.get("fact_count") as neo4j.Integer).toNumber(),
-      }));
+      return result.records.map((r) => {
+        const name = r.get("name") as string;
+        const factsData = r.get("facts_data") as Array<Record<string, unknown>>;
+
+        // Filter out empty entries from OPTIONAL MATCH (when entity has no facts)
+        const validFacts = factsData.filter((fd) => fd.confidence !== null || fd.created_at !== null);
+
+        let healthCurrent = 0;
+        let healthReview = 0;
+        let healthOutdated = 0;
+
+        for (const fd of validFacts) {
+          const rawConfidence = fd.confidence;
+          const conf = typeof rawConfidence === "number" ? rawConfidence : 1.0;
+          const lastValidated = fd.last_validated as string | null;
+          const createdAt = fd.created_at != null ? String(fd.created_at) : null;
+          const supersededBy = fd.superseded_by as string | null;
+
+          const dc = computeDisplayConfidence({
+            confidence: conf,
+            last_validated: lastValidated,
+            created_at: createdAt,
+            superseded_by: supersededBy,
+          });
+
+          const tag = confidenceTag(dc);
+          if (tag === "\u2705 Current") healthCurrent++;
+          else if (tag === "\uD83D\uDD04 Needs review") healthReview++;
+          else healthOutdated++;
+        }
+
+        return {
+          name,
+          factCount: validFacts.length,
+          healthCurrent,
+          healthReview,
+          healthOutdated,
+        };
+      });
     });
   }
 
