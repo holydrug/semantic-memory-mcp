@@ -2,16 +2,23 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { Config } from "../config.js";
 import type { StorageBackend, EmbedFn } from "../types.js";
-import type { IngestState } from "../ingest/types.js";
+import { isDualBackend } from "../types.js";
+import { classifyScope } from "../classify.js";
+import type { IngestRunState } from "../ingest/types.js";
 import { scanDirectory } from "../ingest/scanner.js";
-import { orchestrate } from "../ingest/orchestrator.js";
+import {
+  orchestrate,
+  InMemoryCheckpoint,
+} from "../ingest/orchestrator.js";
+import type { ExtractedFact } from "../ingest/strategies/types.js";
 
 /** In-memory registry of ingest runs */
-const runs = new Map<string, IngestState>();
+const runs = new Map<string, IngestRunState>();
 
 /** Exported for testing */
-export function _getRuns(): Map<string, IngestState> {
+export function _getRuns(): Map<string, IngestRunState> {
   return runs;
 }
 
@@ -31,7 +38,7 @@ function formatElapsed(ms: number): string {
   return `${hours}h ${remainingMinutes}m`;
 }
 
-function getSourcesDone(state: IngestState): number {
+function getSourcesDone(state: IngestRunState): number {
   let count = 0;
   for (const s of Object.values(state.sources)) {
     if (s.status === "done" || s.status === "error") count++;
@@ -39,7 +46,7 @@ function getSourcesDone(state: IngestState): number {
   return count;
 }
 
-function getCurrentSource(state: IngestState): string | undefined {
+function getCurrentSource(state: IngestRunState): string | undefined {
   for (const [name, s] of Object.entries(state.sources)) {
     if (s.status === "in_progress") {
       return `${name} (${s.filesProcessed}/${s.filesTotal} files)`;
@@ -48,10 +55,47 @@ function getCurrentSource(state: IngestState): string | undefined {
   return undefined;
 }
 
+/**
+ * Build a store function that embeds and persists each extracted fact.
+ */
+function makeStoreFn(
+  db: StorageBackend,
+  embed: EmbedFn,
+  state: IngestRunState,
+): (fact: ExtractedFact) => Promise<boolean> {
+  return async (fact: ExtractedFact): Promise<boolean> => {
+    const scope = isDualBackend(db) ? classifyScope("has_fact") : null;
+    const target = scope && isDualBackend(db) ? db.getLayerBackend(scope) : db;
+
+    const [subjectEmb, objectEmb, factEmb] = await Promise.all([
+      embed(fact.subject),
+      embed(fact.object),
+      embed(fact.fact),
+    ]);
+
+    const subjectId = await target.findOrCreateEntity(fact.subject, subjectEmb);
+    const objectId = await target.findOrCreateEntity(fact.object, objectEmb);
+
+    await target.storeFact({
+      subjectId,
+      predicate: fact.predicate,
+      objectId,
+      content: fact.fact,
+      context: fact.context,
+      source: fact.source,
+      embedding: factEmb,
+    });
+
+    state.factsStored++;
+    return true;
+  };
+}
+
 export function registerIngestTool(
   server: McpServer,
   db: StorageBackend,
   embed: EmbedFn,
+  _config: Config,
 ): void {
   server.tool(
     "memory_ingest",
@@ -81,7 +125,7 @@ export function registerIngestTool(
         .optional()
         .describe("Cancel a running ingest (requires runId)"),
     },
-    async ({ path, source, force: _force, runId, cancel }) => {
+    async ({ path, source: _source, force: _force, runId, cancel }) => {
       // Mode 2: Check status
       if (runId && !cancel) {
         const state = runs.get(runId);
@@ -173,7 +217,7 @@ export function registerIngestTool(
 
       // Mode 1: Start ingestion
       const scanRoot = resolve(path ?? process.cwd());
-      const scanResult = scanDirectory(scanRoot, source);
+      const scanResult = await scanDirectory(scanRoot);
 
       if (scanResult.sources.length === 0) {
         return {
@@ -189,7 +233,7 @@ export function registerIngestTool(
       }
 
       const newRunId = `run_${randomUUID().slice(0, 8)}`;
-      const state: IngestState = {
+      const state: IngestRunState = {
         runId: newRunId,
         status: "running",
         startedAt: new Date().toISOString(),
@@ -217,16 +261,52 @@ export function registerIngestTool(
       runs.set(newRunId, state);
 
       // Fire and forget — orchestrator runs in background
-      orchestrate({
-        scanResult,
-        db,
-        embed,
-        state,
-      }).catch((err) => {
-        state.status = "error";
-        state.errors.push(err instanceof Error ? err.message : String(err));
-        state.completedAt = new Date().toISOString();
-      });
+      const storeFn = makeStoreFn(db, embed, state);
+      const checkpoint = new InMemoryCheckpoint();
+      const config = _config;
+
+      void (async () => {
+        try {
+          for await (const event of orchestrate(
+            scanResult.sources,
+            config,
+            storeFn,
+            checkpoint,
+            scanRoot,
+          )) {
+            // Update tool-layer state from orchestrator events
+            if (event.source) {
+              const srcState = state.sources[event.source];
+              if (srcState) {
+                if (event.type === "source_start") {
+                  srcState.status = "in_progress";
+                } else if (event.type === "source_done") {
+                  srcState.status = "done";
+                  srcState.filesProcessed = event.filesProcessed ?? 0;
+                  srcState.factsStored = event.factsStored ?? 0;
+                  srcState.completedAt = new Date().toISOString();
+                } else if (event.type === "source_error") {
+                  srcState.status = "error";
+                  srcState.error = event.error;
+                  state.errors.push(event.error ?? "Unknown error");
+                }
+              }
+            }
+            if (event.type === "done") {
+              state.status = "done";
+              state.completedAt = new Date().toISOString();
+            }
+          }
+          if (state.status === "running") {
+            state.status = "done";
+            state.completedAt = new Date().toISOString();
+          }
+        } catch (err: unknown) {
+          state.status = "error";
+          state.errors.push(err instanceof Error ? err.message : String(err));
+          state.completedAt = new Date().toISOString();
+        }
+      })();
 
       return {
         content: [{

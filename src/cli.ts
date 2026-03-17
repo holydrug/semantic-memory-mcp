@@ -184,12 +184,14 @@ export async function runCli(args: string[]): Promise<void> {
     }
 
     case "export": {
-      console.error("Not implemented yet (v3 Step 14)");
+      const { runExport } = await import("./cli/export.js");
+      await runExport(args.slice(1));
       process.exit(0);
     }
 
     case "import": {
-      console.error("Not implemented yet (v3 Step 14)");
+      const { runImport } = await import("./cli/import.js");
+      await runImport(args.slice(1));
       process.exit(0);
     }
 

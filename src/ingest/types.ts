@@ -1,23 +1,27 @@
 /**
  * Ingestion types shared across scanner, orchestrator, and tools.
  * Step 13: memory_ingest + memory_ingest_url + CLI ingest
+ *
+ * Re-exports core types from scanner and orchestrator,
+ * and defines tool-layer run-tracking types.
  */
 
-export interface SourceInfo {
-  name: string;
-  strategy: string;
-  phase: number;
-  files: string[];
-}
+// Re-export from scanner/orchestrator so consumers can import from one place
+export type { ScanResult, IngestionSource, Strategy } from "./scanner.js";
+export type {
+  ProgressEvent,
+  SourceState,
+  IngestState as OrchestratorState,
+  StoreFactFn,
+  CheckpointBackend,
+} from "./orchestrator.js";
+export { InMemoryCheckpoint } from "./orchestrator.js";
 
-export interface ScanResult {
-  root: string;
-  sources: SourceInfo[];
-}
+// ── Tool-layer run tracking ──────────────────────────────────────────────
 
-export type IngestStatus = "running" | "done" | "error" | "cancelled";
+export type IngestRunStatus = "running" | "done" | "error" | "cancelled";
 
-export interface SourceState {
+export interface SourceRunState {
   status: "pending" | "in_progress" | "done" | "error";
   phase: number;
   strategy: string;
@@ -29,28 +33,19 @@ export interface SourceState {
   completedAt?: string;
 }
 
-export interface IngestState {
+/**
+ * In-memory state for tracking an ingest run in the MCP tool layer.
+ * Distinct from the orchestrator's internal IngestState / checkpoint state.
+ */
+export interface IngestRunState {
   runId: string;
-  status: IngestStatus;
+  status: IngestRunStatus;
   startedAt: string;
   scanRoot: string;
-  sources: Record<string, SourceState>;
+  sources: Record<string, SourceRunState>;
   cancelRequested: boolean;
   factsStored: number;
   duplicatesSkipped: number;
   errors: string[];
   completedAt?: string;
 }
-
-export interface ProgressEvent {
-  type: "source_start" | "source_progress" | "source_done" | "source_error" | "ingest_done";
-  sourceName?: string;
-  filesProcessed?: number;
-  filesTotal?: number;
-  factsStored?: number;
-  duplicatesSkipped?: number;
-  error?: string;
-  elapsed?: string;
-}
-
-export type ProgressCallback = (event: ProgressEvent) => void;

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { Config } from "../config.js";
 import type { StorageBackend, EmbedFn } from "../types.js";
 import { isDualBackend } from "../types.js";
 import { classifyScope } from "../classify.js";
@@ -163,6 +164,7 @@ export function registerIngestUrlTool(
   server: McpServer,
   db: StorageBackend,
   embed: EmbedFn,
+  _config: Config,
 ): void {
   server.tool(
     "memory_ingest_url",
