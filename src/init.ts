@@ -5,6 +5,7 @@ import { homedir, platform } from "node:os";
 import { execSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { DEFAULT_TRIGGERS, type ToolKey } from "./triggers.js";
+import { migrateV2 } from "./init-v2-migrate.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PKG_VERSION = (JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8")) as { version: string }).version;
@@ -356,6 +357,38 @@ export async function runInit(): Promise<void> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
 
   try {
+    // ─── V2 Detection ───────────────────────────────────────
+    // Detect v2 state: .env exists AND config.json does not
+    // Check multiple locations in priority order:
+    //   1. ~/.semantic-memory/ (home dir)
+    //   2. ./.semantic-memory/ (cwd, project-local v2)
+    const homeDataDir = join(homedir(), ".semantic-memory");
+    const cwdDataDir = join(process.cwd(), ".semantic-memory");
+
+    let v2DataDir: string | null = null;
+
+    // Check home dir first
+    if (
+      existsSync(join(homeDataDir, ".env")) &&
+      !existsSync(join(homeDataDir, "config.json"))
+    ) {
+      v2DataDir = homeDataDir;
+    }
+    // Then cwd
+    if (
+      !v2DataDir &&
+      existsSync(join(cwdDataDir, ".env")) &&
+      !existsSync(join(cwdDataDir, "config.json"))
+    ) {
+      v2DataDir = cwdDataDir;
+    }
+
+    if (v2DataDir) {
+      console.error(`\n  Detected v2 installation at ${v2DataDir}`);
+      await migrateV2({ dataDir: v2DataDir, rl });
+      return;
+    }
+
     let config: Record<string, unknown>;
 
     if (existsSync(claudeJsonPath)) {
