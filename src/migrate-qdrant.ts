@@ -141,6 +141,13 @@ export async function runMigrateQdrant(flags: MigrateFlags): Promise<void> {
             source: (record.get("source") as string) || "",
             scope_candidate: (record.get("scopeCandidate") as string) ?? null,
             created_at: createdAtStr,
+            // v3 fields — defaults for migrated v2 data
+            version: null,
+            valid_from: null,
+            valid_until: null,
+            superseded_by: null,
+            confidence: 1.0,
+            last_validated: createdAtStr,
           },
         });
 

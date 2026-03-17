@@ -9,6 +9,13 @@ export interface StoreFact {
   source: string;
   embedding: Float32Array;
   scopeCandidate?: "global" | "project" | null;
+  // v3 fields (optional — defaults applied if omitted)
+  version?: string | null;
+  validFrom?: string | null;
+  validUntil?: string | null;
+  supersededBy?: string | null;
+  confidence?: number;
+  lastValidated?: string;
 }
 
 export interface SearchResult {
@@ -22,6 +29,13 @@ export interface SearchResult {
   factId: string;
   sourceLayer?: "project" | "global";
   createdAt?: string;  // ISO 8601, populated when Qdrant returns results
+  // v3 fields (populated with defaults for v2 facts)
+  version?: string | null;
+  validFrom?: string | null;
+  validUntil?: string | null;
+  supersededBy?: string | null;
+  confidence?: number;
+  lastValidated?: string;
 }
 
 /** Filters for Qdrant-powered search */
@@ -116,4 +130,49 @@ export function parseFactId(
     return { error: "invalid numeric ID" };
   }
   return { numericId };
+}
+
+// ---------- v3: Confidence decay ----------
+
+/** Compute how many days have elapsed since a given ISO 8601 date. */
+function daysSince(isoDate: string): number {
+  const then = new Date(isoDate).getTime();
+  const now = Date.now();
+  return Math.max(0, (now - then) / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * Compute the display confidence for a fact, incorporating time decay.
+ *
+ * - If the fact is superseded (`superseded_by` is set), returns 0.0.
+ * - Otherwise, applies exponential decay (half-life = 365 days) based on
+ *   the time since the fact was last validated (or created).
+ * - Returns the minimum of the stored confidence and the decay value.
+ */
+export function computeDisplayConfidence(fact: {
+  confidence: number;
+  last_validated?: string | null;
+  created_at?: string | null;
+  superseded_by?: string | null;
+}): number {
+  if (fact.superseded_by != null) return 0.0;
+
+  const referenceDate = fact.last_validated ?? fact.created_at ?? new Date().toISOString();
+  const ageDays = daysSince(referenceDate);
+  const decay = Math.pow(0.5, ageDays / 365);
+
+  return Math.min(fact.confidence, decay);
+}
+
+/**
+ * Map a display confidence score to a human-readable tag.
+ *
+ * - >= 0.7  -> "✅ Current"
+ * - >= 0.4  -> "🔄 Needs review"
+ * - <  0.4  -> "⚠️ Outdated"
+ */
+export function confidenceTag(displayConfidence: number): string {
+  if (displayConfidence >= 0.7) return "✅ Current";
+  if (displayConfidence >= 0.4) return "🔄 Needs review";
+  return "⚠️ Outdated";
 }
