@@ -95,6 +95,12 @@ export function registerStoreTool(
                 source: r.source,
                 scope_candidate: null,
                 created_at: r.createdAt ?? new Date().toISOString(),
+                version: r.version ?? null,
+                valid_from: r.validFrom ?? null,
+                valid_until: r.validUntil ?? null,
+                superseded_by: r.supersededBy ?? null,
+                confidence: r.confidence ?? 1.0,
+                last_validated: r.lastValidated ?? r.createdAt ?? new Date().toISOString(),
               },
             }));
           }
@@ -116,6 +122,12 @@ export function registerStoreTool(
               source: r.source,
               scope_candidate: null,
               created_at: r.createdAt ?? new Date().toISOString(),
+              version: r.version ?? null,
+              valid_from: r.validFrom ?? null,
+              valid_until: r.validUntil ?? null,
+              superseded_by: r.supersededBy ?? null,
+              confidence: r.confidence ?? 1.0,
+              last_validated: r.lastValidated ?? r.createdAt ?? new Date().toISOString(),
             },
           }));
         };

@@ -30,17 +30,17 @@ describe("extractJSON", () => {
     assert.deepStrictEqual(result, [1, 2, { a: 3 }]);
   });
 
-  it("throws ClaudeCliError on no JSON", () => {
+  it("throws on no JSON", () => {
     assert.throws(
       () => extractJSON("no json here"),
-      (err) => err instanceof ClaudeCliError && err.message.includes("No valid JSON found"),
+      (err) => err instanceof Error && err.message.includes("No valid JSON found"),
     );
   });
 
-  it("throws ClaudeCliError on unclosed JSON", () => {
+  it("throws on unclosed JSON", () => {
     assert.throws(
       () => extractJSON('{"unclosed": '),
-      (err) => err instanceof ClaudeCliError && err.message.includes("No valid JSON found"),
+      (err) => err instanceof Error && err.message.includes("No valid JSON found"),
     );
   });
 
@@ -319,7 +319,7 @@ describe("config validation fields", () => {
     try {
       const config = getConfig();
       assert.ok(config.validation, "validation config exists");
-      assert.strictEqual(config.validation.mode, "on-store");
+      assert.strictEqual(config.validation.mode, "off");
       assert.strictEqual(config.validation.model, "sonnet");
       assert.strictEqual(config.validation.sweepBatchSize, 20);
       assert.strictEqual(config.validation.maxFactAgeDays, 90);

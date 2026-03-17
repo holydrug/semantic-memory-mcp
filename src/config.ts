@@ -29,6 +29,7 @@ export interface Config {
   triggersGraph?: string;
   triggersList?: string;
   triggersDelete?: string;
+  triggersValidate?: string;
   dualMode: boolean;
   globalDir: string;
   projectSlug: string;
@@ -238,6 +239,16 @@ export function parseConfigJson(filePath: string): Config {
     qdrantUrl: qdrantObj["url"] as string,
     qdrantApiKey: undefined,
     qdrantCollection: qdrantObj["collection"] as string,
+    validation: {
+      mode: _validation.mode as "on-store" | "off",
+      claudePath: _validation.claudePath,
+      model: _validation.model,
+      conflictThreshold: _validation.conflictThreshold,
+      sweepCooldownMin: _validation.sweepCooldownMin,
+      sweepBatchSize: _validation.sweepBatchSize,
+      maxFactAgeDays: _validation.maxFactAgeDays,
+      maxValidationsPerMinute: _validation.maxValidationsPerMinute,
+    },
   };
 }
 
@@ -284,6 +295,7 @@ export function getConfigFromEnv(): Config {
     triggersGraph: process.env["MEMORY_TRIGGERS_GRAPH"],
     triggersList: process.env["MEMORY_TRIGGERS_LIST"],
     triggersDelete: process.env["MEMORY_TRIGGERS_DELETE"],
+    triggersValidate: process.env["MEMORY_TRIGGERS_VALIDATE"],
     dualMode,
     globalDir,
     projectSlug,

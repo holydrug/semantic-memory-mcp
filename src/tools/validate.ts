@@ -126,7 +126,6 @@ Respond as JSON: { "decisions": [{ "id": <number>, "verdict": "VALID"|"STALE"|"U
           model: config.validation.model,
           maxTurns: 1,
           timeout: 30_000,
-          claudePath: config.validation.claudePath,
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
