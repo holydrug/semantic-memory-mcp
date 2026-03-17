@@ -14,6 +14,8 @@ import { registerSearchTool } from "./tools/search.js";
 import { registerGraphTool } from "./tools/graph.js";
 import { registerListTool } from "./tools/list.js";
 import { registerDeleteTool } from "./tools/delete.js";
+import { registerIngestTool } from "./tools/ingest.js";
+import { registerIngestUrlTool } from "./tools/ingest-url.js";
 import type { StorageBackend } from "./types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -70,6 +72,25 @@ if (command === "delete") {
   process.exit(0);
 }
 
+if (command === "ingest") {
+  const config = getConfig();
+  let backend: StorageBackend;
+  if (config.dualMode) {
+    const projectBackend = await createBackend(config, "project");
+    const globalBackend = await createBackend(config, "global");
+    backend = createDualBackend(projectBackend, globalBackend);
+  } else {
+    backend = await createBackend(config, "project");
+  }
+
+  const embed = await initEmbeddings();
+  const { runIngestCli } = await import("./cli/ingest.js");
+  await runIngestCli({ args: process.argv.slice(3), db: backend, embed });
+
+  await backend.close();
+  process.exit(0);
+}
+
 if (command === "migrate-qdrant") {
   const flags = {
     reconcile: !process.argv.includes("--no-reconcile"),
@@ -95,6 +116,8 @@ Usage:
   semantic-memory-mcp promote                Promote project facts to global memory
   semantic-memory-mcp delete <id1> [id2 ..]  Delete facts by ID
   semantic-memory-mcp delete --search "q"    Search and interactively delete facts
+  semantic-memory-mcp ingest                 Bulk-ingest project files into knowledge base
+    --source <name>                          Only ingest a specific source
   semantic-memory-mcp migrate-qdrant [flags] Migrate facts from Neo4j to Qdrant
     --no-reconcile                           Skip orphan cleanup
     --recreate                               Drop and recreate Qdrant collection
@@ -155,6 +178,8 @@ registerSearchTool(server, backend, embed, config);
 registerGraphTool(server, backend, config);
 registerListTool(server, backend, config);
 registerDeleteTool(server, backend, config);
+registerIngestTool(server, backend, embed);
+registerIngestUrlTool(server, backend, embed);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
