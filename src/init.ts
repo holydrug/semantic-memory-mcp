@@ -357,13 +357,28 @@ export async function runInit(): Promise<void> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
 
   try {
+    // ─── V3 Detection ───────────────────────────────────────
+    // If config.json already exists, delegate to v3 init (no-op / repair / reconfigure)
+    const homeDataDir = join(homedir(), ".semantic-memory");
+    const cwdDataDir = join(process.cwd(), ".semantic-memory");
+    const existingV3Config = existsSync(join(homeDataDir, "config.json"))
+      ? join(homeDataDir, "config.json")
+      : existsSync(join(cwdDataDir, "config.json"))
+        ? join(cwdDataDir, "config.json")
+        : null;
+
+    if (existingV3Config) {
+      rl.close();
+      const { runInitV3, parseInitArgs } = await import("./cli/init.js");
+      await runInitV3(parseInitArgs(process.argv.slice(3)));
+      return;
+    }
+
     // ─── V2 Detection ───────────────────────────────────────
     // Detect v2 state: .env exists AND config.json does not
     // Check multiple locations in priority order:
     //   1. ~/.semantic-memory/ (home dir)
     //   2. ./.semantic-memory/ (cwd, project-local v2)
-    const homeDataDir = join(homedir(), ".semantic-memory");
-    const cwdDataDir = join(process.cwd(), ".semantic-memory");
 
     let v2DataDir: string | null = null;
 

@@ -26,14 +26,19 @@ export function resolveDataDir(explicitDataDir?: string): string {
   }
 
   const homeDir = join(homedir(), ".semantic-memory");
+  const cwdDir = join(process.cwd(), ".semantic-memory");
 
   // Check home config.json (v3)
   if (existsSync(join(homeDir, "config.json"))) {
     return homeDir;
   }
 
+  // Check cwd config.json (v3, project-local)
+  if (existsSync(join(cwdDir, "config.json"))) {
+    return cwdDir;
+  }
+
   // Check cwd .env (v2)
-  const cwdDir = join(process.cwd(), ".semantic-memory");
   if (existsSync(join(cwdDir, ".env"))) {
     return cwdDir;
   }
