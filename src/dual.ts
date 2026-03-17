@@ -6,6 +6,7 @@ import type {
   SearchResult,
   SearchFilter,
   GraphResult,
+  GraphTraverseOptions,
   EntityInfo,
   CandidateFact,
 } from "./types.js";
@@ -104,10 +105,10 @@ export function createDualBackend(
     return merged.slice(0, limit);
   }
 
-  async function graphTraverse(entityName: string, depth: number): Promise<GraphResult | null> {
+  async function graphTraverse(entityName: string, depth: number, options?: GraphTraverseOptions): Promise<GraphResult | null> {
     const [projectResult, globalResult] = await Promise.all([
-      project.graphTraverse(entityName, depth),
-      global.graphTraverse(entityName, depth),
+      project.graphTraverse(entityName, depth, options),
+      global.graphTraverse(entityName, depth, options),
     ]);
 
     if (!projectResult && !globalResult) return null;
