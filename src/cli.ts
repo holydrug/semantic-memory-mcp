@@ -172,7 +172,8 @@ export async function runCli(args: string[]): Promise<void> {
 
     // v3 placeholders
     case "ingest": {
-      console.error("Not implemented yet (v3 Step 13)");
+      const { runIngest } = await import("./cli/ingest.js");
+      await runIngest(args.slice(1));
       process.exit(0);
     }
 

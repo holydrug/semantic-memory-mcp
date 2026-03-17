@@ -10,6 +10,8 @@ import { registerGraphTool } from "../tools/graph.js";
 import { registerListTool } from "../tools/list.js";
 import { registerDeleteTool } from "../tools/delete.js";
 import { registerValidateTool } from "../tools/validate.js";
+import { registerIngestTool } from "../tools/ingest.js";
+import { registerIngestUrlTool } from "../tools/ingest-url.js";
 import type { StorageBackend } from "../types.js";
 import { maybeSweepOnStart } from "../sweep.js";
 
@@ -39,6 +41,8 @@ export async function runServe(version: string): Promise<void> {
   registerListTool(server, backend, config);
   registerDeleteTool(server, backend, config);
   registerValidateTool(server, backend, config);
+  registerIngestTool(server, backend, embed, config);
+  registerIngestUrlTool(server, backend, embed, config);
 
   // Fire-and-forget sweep on start (does not block serve)
   void maybeSweepOnStart(config, backend);

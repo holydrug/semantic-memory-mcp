@@ -152,7 +152,6 @@ describe("Step 02 — CLI Framework", () => {
   describe("placeholder commands", () => {
     for (const [cmd, step] of [
       ["ingest", "Step 13"],
-      ["sweep", "Step 8"],
       ["export", "Step 14"],
       ["import", "Step 14"],
       ["validate", "Step 7"],
