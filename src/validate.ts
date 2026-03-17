@@ -199,7 +199,6 @@ export async function detectAndResolveConflicts(
     model: config.validation.model,
     maxTurns: 1,
     timeout: 30_000,
-    claudePath: config.validation.claudePath,
   });
 
   // Apply decisions
