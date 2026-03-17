@@ -594,7 +594,7 @@ export function initNeo4j(layer?: string, qdrant?: QdrantBackend): StorageBacken
                 obj.name AS object, f.content AS content, f.source AS source,
                 coalesce(f.confidence, 1.0) AS confidence,
                 toString(f.last_validated) AS lastValidated
-         ORDER BY f.last_validated ASC NULLS FIRST
+         ORDER BY coalesce(f.last_validated, datetime('1970-01-01T00:00:00Z')) ASC
          LIMIT $limit`,
         params,
       );
